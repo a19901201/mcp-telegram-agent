@@ -22,11 +22,38 @@
 
 ## 快速開始
 
-### 1. 前置準備
-* **Telegram Bot Token**：於 Telegram 搜尋 `@BotFather` 建立機器人並獲取 Token。
-* **Chat ID**：發送任一訊息給 `@userinfobot` 獲取個人專屬數值 Chat ID。
+### 1. 申請 Telegram 機器人並取得 Token
 
-### 2. 用戶端配置範例
+1. 開啟 Telegram 搜尋 **@BotFather**（有藍色勾勾認證）。
+2. 傳送 `/newbot`，依提示輸入顯示名稱，再取一個以 `bot` 結尾的帳號名（如 `my_alert_bot`）。
+3. BotFather 會回覆你的 **Bot Token**，格式如 `123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`。請妥善保管——取得此 Token 的人就能完全控制你的機器人。
+4. **重要**：開啟新機器人的聊天視窗按下 **Start**（或傳送 `/start`）。使用者若從未與機器人開啟對話，機器人是無法主動傳訊給他的。
+
+### 2. 取得個人 Chat ID
+
+1. 傳送任一訊息（如「hi」）給你的新機器人。
+2. 用瀏覽器開啟下列網址，將 `<YOUR_BOT_TOKEN>` 換成你的 Token：
+   `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+3. 在回傳的 JSON 中找到 `"chat":{"id": 123456789, ...}`，該數值即是你的 **Chat ID**。
+   * 替代做法：傳送任一訊息給 `@userinfobot`，它會直接回覆你的 ID。
+
+### 3. 發送到群組或頻道（選用）
+
+* 先**把機器人加入群組**（群組設定 → 加入成員）。頻道則須將機器人設為**管理員**才能發文。
+* **群組 ID 為負數**（如 `-1001234567890`）。取得方式：
+  * 暫時把 `@userinfobot` 拉進群組，轉發一則群組訊息給它即可查得；**或**
+  * 先在 @BotFather 執行 `/setprivacy` → 選擇你的機器人 → **Disable**（關閉隱私模式），在群組內發一則訊息後，再以 `getUpdates` 查詢。
+* 機器人一旦成為群組／頻道成員，即可直接發送訊息，無需額外設定。
+
+### 4. 執行時發送到任意 Chat
+
+`TELEGRAM_DEFAULT_CHAT_ID` 只是**預設收件人**。所有工具都接受選用的 `chat_id` 參數，你可以直接對 AI 代理說「把這則訊息發到 chat ID -1001234567890」：
+
+* **未提供** `chat_id` → 訊息送到設定檔中的 `TELEGRAM_DEFAULT_CHAT_ID`。
+* **有提供** `chat_id` → 訊息改送到指定的使用者／群組／頻道。
+* 前提：機器人必須已在該群組／頻道內（或該使用者已對機器人按過 Start）。
+
+### 5. 用戶端配置範例
 
 在 MCP 設定檔（例如 VS Code 的 `cline_mcp_settings.json` 或 `claude_desktop_config.json`）中加入以下內容：
 
@@ -79,6 +106,14 @@
 * `send_chat_action`：向用戶端顯示當前操作狀態，如打字中與上傳檔案中。
 * `edit_message_text`：動態更新既有訊息內容與按鈕。
 * `delete_message`：清理特定暫存或歷史訊息。
+
+---
+
+## 開發與發布流程
+
+* 功能開發一律先進 **`main`** 分支（PR 合併至 main）。
+* 發布**僅**透過 **`release`** 分支：自 `main` 建立 PR 指向 `release`，在 PR 中調升 `pyproject.toml` 的 `version` 後合併，CI 即自動建置並發布至 PyPI；若未調升版本，守門步驟會直接判失敗。
+* `release` 分支已啟用分支保護，禁止直接 push，一律經 PR 發布。
 
 ---
 

@@ -22,11 +22,38 @@ Also includes the ultra-short command alias `tg-agent`.
 
 ## Quick Start
 
-### 1. Prerequisites
-* **Telegram Bot Token**: Obtain one from `@BotFather`.
-* **Chat ID**: Get your unique numerical Chat ID by sending any message to `@userinfobot`.
+### 1. Create a Telegram Bot & Get the Token
 
-### 2. Configuration for AI Clients
+1. Open Telegram and search for **@BotFather** (verified blue check).
+2. Send `/newbot` and follow the prompts: choose a display name, then a username ending in `bot` (e.g. `my_alert_bot`).
+3. BotFather replies with your **Bot Token**, e.g. `123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`. Keep it secret — anyone with this token can control your bot.
+4. **Important**: open your new bot's chat and press **Start** (or send `/start`). A bot cannot message a user who has never started a conversation with it.
+
+### 2. Get Your Personal Chat ID
+
+1. Send any message (e.g. "hi") to your new bot.
+2. Open this URL in a browser, replacing `<YOUR_BOT_TOKEN>` with your token:
+   `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+3. In the JSON response, locate `"chat":{"id": 123456789, ...}` — that number is your **Chat ID**.
+   * Alternative: send any message to `@userinfobot` and it replies with your ID.
+
+### 3. Send to Groups or Channels (Optional)
+
+* **Add the bot to the group** first (via group settings → *Add members*). For channels, the bot must be added as an **administrator** to post.
+* **Group IDs are negative numbers** (e.g. `-1001234567890`). To find one:
+  * Temporarily add `@userinfobot` to the group and forward a group message to it, **or**
+  * Disable the bot's *Group Privacy* via @BotFather (`/setprivacy` → select your bot → *Disable*), post a message in the group, then check `getUpdates` as above.
+* Once the bot is a member of the group/channel, it can send messages there — no extra configuration needed.
+
+### 4. Sending to Any Chat at Runtime
+
+`TELEGRAM_DEFAULT_CHAT_ID` is only the **fallback target**. Every tool accepts an optional `chat_id` parameter, so you can simply ask your AI agent to *"send this to chat ID -1001234567890"*:
+
+* `chat_id` **omitted** → the message goes to the `TELEGRAM_DEFAULT_CHAT_ID` from your config.
+* `chat_id` **provided** → the message goes to that user/group/channel instead.
+* Requirement: the bot must be a member of that group/channel (or the target user must have pressed Start on the bot).
+
+### 5. Configuration for AI Clients
 
 Add the configuration below to your MCP settings file (e.g., `cline_mcp_settings.json` or `claude_desktop_config.json`):
 
@@ -79,6 +106,14 @@ Add the configuration below to your MCP settings file (e.g., `cline_mcp_settings
 * `send_chat_action`: Display temporary bot statuses (typing, uploading).
 * `edit_message_text`: Dynamically update previously sent text and keyboards.
 * `delete_message`: Clean up or remove specific messages.
+
+---
+
+## Development & Release Flow
+
+* Develop against **`main`** — all feature work and PRs land here.
+* Publishing happens **only** from the **`release`** branch: open a PR `main` → `release`, bump `version` in `pyproject.toml` within the PR, then merge — CI builds and publishes to PyPI automatically. A version guard fails the run if the version was not bumped.
+* Direct pushes to `release` are blocked by branch protection; always go through a PR.
 
 ---
 
