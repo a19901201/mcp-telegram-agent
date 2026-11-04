@@ -33,17 +33,34 @@
 ```json
 {
   "mcpServers": {
-    "telegram": {
+    "Telegram": {
       "command": "uvx",
       "args": ["mcp-telegram-agent"],
       "env": {
         "TELEGRAM_BOT_TOKEN": "你的_BOT_TOKEN",
         "TELEGRAM_DEFAULT_CHAT_ID": "你的_CHAT_ID"
-      }
+      },
+      "autoApprove": [
+        "send_text_message",
+        "send_chat_action",
+        "send_local_document",
+        "send_local_photo",
+        "send_local_video",
+        "send_local_audio_or_voice",
+        "send_media_album",
+        "send_poll",
+        "send_location",
+        "send_contact",
+        "send_dice",
+        "edit_message_text",
+        "delete_message"
+      ]
     }
   }
 }
 ```
+
+> **`autoApprove` 說明**：此欄位為 VS Code Cline 專用（`cline_mcp_settings.json`），將全部 13 個工具列入白名單，讓 AI 代理發送訊息時免每次人工確認。Claude Desktop 不支援此欄位，使用 `claude_desktop_config.json` 時請移除。請僅在完全信任目標聊天對象時開啟自動核准，AI 代理將能自主發送訊息。
 
 ---
 

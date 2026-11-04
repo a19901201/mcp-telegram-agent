@@ -33,17 +33,34 @@ Add the configuration below to your MCP settings file (e.g., `cline_mcp_settings
 ```json
 {
   "mcpServers": {
-    "telegram": {
+    "Telegram": {
       "command": "uvx",
       "args": ["mcp-telegram-agent"],
       "env": {
         "TELEGRAM_BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
         "TELEGRAM_DEFAULT_CHAT_ID": "YOUR_CHAT_ID"
-      }
+      },
+      "autoApprove": [
+        "send_text_message",
+        "send_chat_action",
+        "send_local_document",
+        "send_local_photo",
+        "send_local_video",
+        "send_local_audio_or_voice",
+        "send_media_album",
+        "send_poll",
+        "send_location",
+        "send_contact",
+        "send_dice",
+        "edit_message_text",
+        "delete_message"
+      ]
     }
   }
 }
 ```
+
+> **Note on `autoApprove`**: This field is specific to VS Code Cline (`cline_mcp_settings.json`). It whitelists all 13 tools so the agent can send messages without asking for confirmation each time. Claude Desktop does not support `autoApprove` — simply remove this field when using `claude_desktop_config.json`. Only add `autoApprove` if you fully trust the bot's target chat, as the agent will be able to send messages autonomously.
 
 ---
 
