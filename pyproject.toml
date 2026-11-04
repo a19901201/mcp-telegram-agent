@@ -1,19 +1,33 @@
 [project]
 name = "mcp-telegram-agent"
-version = "0.1.4"
+version = "0.1.5"
 description = "FastMCP-style MCP server empowering AI agents with full-featured Telegram Bot control: rich keyboards, local files, media albums, and interactive widgets."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "PCKuo" }
 ]
 keywords = ["mcp", "model-context-protocol", "fastmcp", "telegram", "telegram-bot", "ai-agent", "automation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = [
     "mcp[cli]>=1.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/a19901201/mcp-telegram-agent"
+Repository = "https://github.com/a19901201/mcp-telegram-agent"
+Issues = "https://github.com/a19901201/mcp-telegram-agent/issues"
 
 [project.scripts]
 mcp-telegram-agent = "mcp_telegram_agent.server:main"
