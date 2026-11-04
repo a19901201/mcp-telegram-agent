@@ -112,7 +112,8 @@ Add the configuration below to your MCP settings file (e.g., `cline_mcp_settings
 ## Development & Release Flow
 
 * Develop against **`main`** — all feature work and PRs land here.
-* Publishing happens **only** from the **`release`** branch: open a PR `main` → `release`, bump `version` in `pyproject.toml` within the PR, then merge — CI builds and publishes to PyPI automatically. A version guard fails the run if the version was not bumped.
+* Publishing happens **only** from the **`release`** branch: open a PR `main` → `release`, bump `version` in `pyproject.toml` within the PR, then merge — CI builds and publishes to PyPI automatically, and creates a matching GitHub Release (`v*` tag + auto-generated notes).
+* If the version was not bumped, the workflow skips publishing with a clear warning — docs-only PRs won't break CI.
 * Direct pushes to `release` are blocked by branch protection; always go through a PR.
 
 ---

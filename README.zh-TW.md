@@ -112,7 +112,8 @@
 ## 開發與發布流程
 
 * 功能開發一律先進 **`main`** 分支（PR 合併至 main）。
-* 發布**僅**透過 **`release`** 分支：自 `main` 建立 PR 指向 `release`，在 PR 中調升 `pyproject.toml` 的 `version` 後合併，CI 即自動建置並發布至 PyPI；若未調升版本，守門步驟會直接判失敗。
+* 發布**僅**透過 **`release`** 分支：自 `main` 建立 PR 指向 `release`，在 PR 中調升 `pyproject.toml` 的 `version` 後合併，CI 即自動建置並發布至 PyPI，同時自動建立對應的 GitHub Release（`v*` 標籤與自動生成的 release notes）。
+* 若未調升版本，workflow 會明確警告並跳過發布——純文件 PR 不會讓 CI 失敗。
 * `release` 分支已啟用分支保護，禁止直接 push，一律經 PR 發布。
 
 ---
