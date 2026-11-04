@@ -3,6 +3,7 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -21,5 +22,8 @@ jobs:
       - name: Build package
         run: uv build
 
+      # 憑證由 GitHub Secrets 注入（PYPI_API_TOKEN），不寫入任何檔案
       - name: Publish to PyPI
         run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
