@@ -1,4 +1,4 @@
-name: Publish to PyPI
+﻿name: Publish to PyPI
 
 # 僅 release 分支觸發：PR 合併進 release 即自動發布；main 不發布
 on:
@@ -6,11 +6,13 @@ on:
     branches: [release]
   workflow_dispatch:
 
+permissions:
+  contents: write   # 建立 tag 與 GitHub Release
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -19,26 +21,42 @@ jobs:
         with:
           python-version: "3.12"
 
-      # 版本守門：PyPI 不允許重複上傳同版本，忘記 bump 時在此明確失敗
-      - name: Guard - version must not already exist on PyPI
+      # 版本守門：PyPI 不允許重複上傳同版本。偵測到版本未 bump 時跳過發布
+      # （文件型 PR 合併不發新版屬正常情況）；要發布新版請在 PR 中 bump pyproject.toml
+      - name: Guard - skip publishing when version already exists on PyPI
+        id: guard
         run: |
           VERSION=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
           HTTP=$(curl -s -o /tmp/pypi.json -w "%{http_code}" https://pypi.org/pypi/mcp-telegram-agent/json)
           if [ "$HTTP" = "200" ]; then
             PYPI_VER=$(python3 -c "import json;print(json.load(open('/tmp/pypi.json'))['info']['version'])")
             if [ "$VERSION" = "$PYPI_VER" ]; then
-              echo "::error::版本 $VERSION 已存在於 PyPI。請在 PR 中先 bump pyproject.toml 再合併。"
-              exit 1
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::版本 $VERSION 已存在於 PyPI，本次合併不發布。要發布新版請在 PR 中 bump pyproject.toml。"
+              echo "### 未發布：版本 $VERSION 已存在於 PyPI，請在 PR 中 bump 版本" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
             fi
           fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "將發布版本: $VERSION"
 
       # 測試檔（tests/）不進版控，僅在本機驗證，此處直接建置發佈
       - name: Build package
+        if: steps.guard.outputs.skip == 'false'
         run: uv build
 
       # 憑證由 GitHub Secrets 注入（PYPI_API_TOKEN），不寫入任何檔案
       - name: Publish to PyPI
+        if: steps.guard.outputs.skip == 'false'
         run: uv publish
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+      # 發布成功後自動建立 tag 與 GitHub Release（notes 由 commits 自動生成）
+      - name: Create GitHub Release
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          gh release create "v$VERSION" --title "v$VERSION" --generate-notes --target "$GITHUB_SHA"
