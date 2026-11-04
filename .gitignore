@@ -1,0 +1,31 @@
+# ===== 本機開發與測試專區（絕不推上公開庫） =====
+dev_test/
+tests/
+*.local
+*.session
+*.token
+.env
+.env.*
+!.env.example
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ===== IDE 與系統檔案 =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
