@@ -1,8 +1,9 @@
 name: Publish to PyPI
 
+# 僅 release 分支觸發：PR 合併進 release 即自動發布；main 不發布
 on:
-  release:
-    types: [published]
+  push:
+    branches: [release]
   workflow_dispatch:
 
 jobs:
@@ -17,6 +18,20 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+
+      # 版本守門：PyPI 不允許重複上傳同版本，忘記 bump 時在此明確失敗
+      - name: Guard - version must not already exist on PyPI
+        run: |
+          VERSION=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          HTTP=$(curl -s -o /tmp/pypi.json -w "%{http_code}" https://pypi.org/pypi/mcp-telegram-agent/json)
+          if [ "$HTTP" = "200" ]; then
+            PYPI_VER=$(python3 -c "import json;print(json.load(open('/tmp/pypi.json'))['info']['version'])")
+            if [ "$VERSION" = "$PYPI_VER" ]; then
+              echo "::error::版本 $VERSION 已存在於 PyPI。請在 PR 中先 bump pyproject.toml 再合併。"
+              exit 1
+            fi
+          fi
+          echo "將發布版本: $VERSION"
 
       # 測試檔（tests/）不進版控，僅在本機驗證，此處直接建置發佈
       - name: Build package
