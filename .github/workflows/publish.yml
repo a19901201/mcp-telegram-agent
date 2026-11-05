@@ -20,6 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          enable-cache: false  # 一次性發布 job 不需 cache；守門跳過時 uv cache 目錄不存在會使 post 步驟失敗
 
       # 版本守門：PyPI 不允許重複上傳同版本。偵測到版本未 bump 時跳過發布
       # （文件型 PR 合併不發新版屬正常情況）；要發布新版請在 PR 中 bump pyproject.toml
