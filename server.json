@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.a19901201/mcp-telegram-agent",
+  "title": "mcp-telegram-agent",
+  "description": "MCP server empowering AI agents with full-featured Telegram Bot control via pure Bot API: rich inline and reply keyboards, local file delivery, media albums, voice, polls, contacts, location sharing, and message lifecycle management. Zero login risk — a single Bot Token is all the setup required.",
+  "repository": {
+    "url": "https://github.com/a19901201/mcp-telegram-agent",
+    "source": "github"
+  },
+  "version": "0.1.8",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-telegram-agent",
+      "version": "0.1.8",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
