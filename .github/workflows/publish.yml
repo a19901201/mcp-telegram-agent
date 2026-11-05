@@ -40,6 +40,35 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "將發布版本: $VERSION"
 
+      # 鎖檔守門：uv.lock 內記錄的本專案版本必須與 pyproject.toml 一致，
+      # 避免發布時鎖檔版本漂移。bump 版本的 PR 應一併執行 uv lock 同步鎖檔。
+      - name: Guard - uv.lock version must match pyproject
+        run: |
+          python3 - <<'PY'
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as f:
+              py = tomllib.load(f)
+          with open("uv.lock", "rb") as f:
+              lock = tomllib.load(f)
+
+          name = py["project"]["name"]
+          pv = py["project"]["version"]
+          lv = next(
+              (p["version"] for p in lock.get("package", []) if p.get("name") == name),
+              None,
+          )
+
+          if lv is None:
+              print(f"::error::uv.lock 缺少本專案 {name} 的套件條目，請在本機執行 uv lock 後重新提交")
+              sys.exit(1)
+          if pv != lv:
+              print(f"::error::版本不一致：pyproject.toml={pv}，uv.lock={lv}。請在本機執行 uv lock 同步後重新提交")
+              sys.exit(1)
+          print(f"鎖檔守門通過：{name} {pv}")
+          PY
+
       # 測試檔（tests/）不進版控，僅在本機驗證，此處直接建置發佈
       - name: Build package
         if: steps.guard.outputs.skip == 'false'
