@@ -20,9 +20,10 @@ from pydantic import BaseModel, Field
 
 mcp = MCPServer("TelegramAgentMCP")
 
+# 兩個環境變數皆為選填：未設定時伺服器仍可正常啟動，
+# 僅在實際呼叫需要權杖或預設 chat_id 的工具時回傳錯誤說明。
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 DEFAULT_CHAT_ID = os.environ.get("TELEGRAM_DEFAULT_CHAT_ID")
-API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 VIDEO_EXTS = {".mp4", ".avi", ".mkv", ".mov", ".webm"}
@@ -91,7 +92,7 @@ async def _execute_post(
     if not BOT_TOKEN:
         return "Error: TELEGRAM_BOT_TOKEN environment variable is not set. / 錯誤：未設定 TELEGRAM_BOT_TOKEN 環境變數"
 
-    url = f"{API_BASE}/{endpoint}"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{endpoint}"
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             if files:
