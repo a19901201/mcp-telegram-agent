@@ -1,0 +1,12 @@
+{
+  "identifier": "a19901201-mcp-telegram-agent",
+  "name": "MCP Telegram Agent",
+  "version": "0.1.8",
+  "description": "Full Telegram Bot control for AI agents via pure Bot API: zero login risk, one Bot Token.",
+  "author": "a19901201",
+  "authorUrl": "https://github.com/a19901201",
+  "homepage": "https://github.com/a19901201/mcp-telegram-agent",
+  "category": "developer",
+  "tags": ["telegram", "bot", "messaging", "communication"],
+  "icon": "✈️"
+}
