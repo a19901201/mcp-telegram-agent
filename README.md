@@ -1,3 +1,6 @@
+<!-- mcp-name: io.github.a19901201/mcp-telegram-agent -->
+
+
 <div align="center">
 
 # 📬 mcp-telegram-agent
