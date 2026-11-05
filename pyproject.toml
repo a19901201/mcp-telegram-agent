@@ -1,6 +1,6 @@
 [project]
 name = "mcp-telegram-agent"
-version = "0.1.5"
+version = "0.1.6"
 description = "FastMCP-style MCP server empowering AI agents with full-featured Telegram Bot control: rich keyboards, local files, media albums, and interactive widgets."
 readme = "README.md"
 requires-python = ">=3.10"
