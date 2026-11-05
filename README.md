@@ -4,7 +4,7 @@
 
 **Give your AI agent full Telegram Bot superpowers — zero login risk, zero setup.**
 
-A lightweight, zero-login-risk Model Context Protocol (MCP) server empowering AI agents with Telegram Bot capabilities. Built with Python (SDK-compatible with both `mcp` 1.x FastMCP and 2.x MCPServer), designed to work seamlessly out-of-the-box with `uvx` and modern AI coding agents like VS Code Cline and Claude Desktop. Also includes the ultra-short command alias `tg-agent`.
+A Model Context Protocol (MCP) server empowering AI agents with Telegram Bot capabilities. Built with Python (SDK-compatible with both `mcp` 1.x FastMCP and 2.x MCPServer), designed to work seamlessly out-of-the-box with `uvx` and modern AI coding agents like VS Code Cline and Claude Desktop. Also includes the ultra-short command alias `tg-agent`.
 
 [![PyPI Version](https://img.shields.io/pypi/v/mcp-telegram-agent?color=blue&logo=pypi)](https://pypi.org/project/mcp-telegram-agent/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mcp-telegram-agent?logo=python)](https://pypi.org/project/mcp-telegram-agent/)
@@ -14,6 +14,10 @@ A lightweight, zero-login-risk Model Context Protocol (MCP) server empowering AI
 **English** · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md)
 
 </div>
+
+> 🔐 **Stop giving AI your personal Telegram account credentials.**
+>
+> **mcp-telegram-agent** is a lightweight, zero-login-risk notification and delivery tool — just one Bot Token sends local files, reports, interactive keyboards, and rich notifications straight to your phone.
 
 ---
 
