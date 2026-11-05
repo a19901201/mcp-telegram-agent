@@ -1,0 +1,56 @@
+name: Guard release source branch
+
+# release 分支只接受來自 main 的 PR：任何其他分支的 PR 進 release 都會被
+# 自動留言、關閉並令 check 失敗，避免變更略過 main 直接進入發布分支。
+#
+# 發布流程（main-first）：
+#   1. 變更以 PR 併入 main（含版本 bump 與 uv lock 同步鎖檔）
+#   2. 由 main 開同步 PR 進 release，合併即觸發 publish.yml 發布
+#
+# 注意：pull_request 事件以 merge ref 上的工作流定義執行，因此本檔案需
+# 存在於 release 分支（隨 main → release 的同步 PR 帶入）才能對後續 PR 生效。
+
+on:
+  pull_request:
+    branches: [release]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  guard:
+    name: require-pr-from-main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allow PR from main
+        if: github.event.pull_request.head.ref == 'main'
+        run: echo "PR 來源為 main，守門通過"
+
+      - name: Reject and close PR not from main
+        if: github.event.pull_request.head.ref != 'main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const head = context.payload.pull_request.head.ref;
+            const body = [
+              '❌ **release 分支只接受來自 main 的 PR**',
+              '',
+              `收到來源分支：\`${head}\`。`,
+              '請先將變更以 PR 併入 main，再由 main → release 的同步 PR 進行發布。',
+              '本 PR 將自動關閉。'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.number,
+              state: 'closed',
+            });
+            core.setFailed(`PRs into release must come from main (got: ${head})`);
