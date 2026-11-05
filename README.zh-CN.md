@@ -4,7 +4,7 @@
 
 **让你的 AI 代理直接拥有 Telegram 机器人的全部能力——零登录风险、零环境配置。**
 
-专为 AI 代理与自动化流程设计的全功能 Telegram 机器人控制协议（MCP）服务器。采用纯 Python 实现，兼容 mcp SDK 1.x（FastMCP）与 2.x（MCPServer），原生支持 `uvx` 随选即用，完美兼容 VS Code Cline、Claude Desktop 等开发环境。
+专为 AI 代理与自动化流程设计的全功能 Telegram 机器人控制协议（MCP）服务器。采用纯 Python 实现，兼容 mcp SDK 1.x（FastMCP）与 2.x（MCPServer），原生支持 `uvx` 随选即用，完美兼容 VS Code Cline、Claude Desktop 等开发环境。同时支持超短指令别名 `tg-agent`。
 
 [![PyPI Version](https://img.shields.io/pypi/v/mcp-telegram-agent?color=blue&logo=pypi)](https://pypi.org/project/mcp-telegram-agent/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mcp-telegram-agent?logo=python)](https://pypi.org/project/mcp-telegram-agent/)
@@ -68,7 +68,7 @@
 
 #### ✅ 示例 A — 通用默认配置（推荐）
 
-适用于**所有** MCP 客户端，不含任何客户端专属字段——每次工具调用前都会先向你确认：
+适用于**所有** MCP 客户端的通用配置——只需填入你的令牌与 chat_id：
 
 ```json
 {
@@ -85,45 +85,18 @@
 }
 ```
 
-> 💡 上述配置**刻意省略**了 `autoApprove` 字段。这是最安全、可移植的默认做法：AI 代理每次调用工具前都会征求你的同意，且此配置可直接用于 Claude Desktop 与任何其他客户端。
-
-#### ⚡ 示例 B — VS Code Cline 自动批准（可选）
-
-> ⚠️ **`autoApprove` 是 VS Code Cline 专属字段**（`cline_mcp_settings.json`）。Claude Desktop 不支持此字段——请**勿**将此区块复制到 `claude_desktop_config.json`。
-
-若你希望 Cline 发送消息与文件时**免去每次人工确认**，请在示例 A 的基础上加上 `autoApprove` 白名单：
+> 💡 **两个环境变量皆为可选。** 缺少任一变量时服务器仍会正常启动，只在实际调用需要令牌或默认 chat_id 的工具时，返回清晰的错误说明。也可以整段省略 `env` 区块，进行不带凭证的试运行：
 
 ```json
 {
   "mcpServers": {
     "Telegram": {
       "command": "uvx",
-      "args": ["mcp-telegram-agent"],
-      "env": {
-        "TELEGRAM_BOT_TOKEN": "你的_BOT_TOKEN",
-        "TELEGRAM_DEFAULT_CHAT_ID": "你的_CHAT_ID"
-      },
-      "autoApprove": [
-        "send_text_message",
-        "send_chat_action",
-        "send_local_document",
-        "send_local_photo",
-        "send_local_video",
-        "send_local_audio_or_voice",
-        "send_media_album",
-        "send_poll",
-        "send_location",
-        "send_contact",
-        "send_dice",
-        "edit_message_text",
-        "delete_message"
-      ]
+      "args": ["mcp-telegram-agent"]
     }
   }
 }
 ```
-
-> 🔐 **安全性提醒**：启用 `autoApprove` 后，AI 代理将能**自主**发送消息、文件与多媒体。请仅在完全信任目标聊天对象时开启。
 
 ---
 
@@ -144,6 +117,93 @@
 | `send_chat_action` | 向客户端显示当前操作状态，如输入中与上传文件中。 |
 | `edit_message_text` | 动态更新既有消息内容与按钮。 |
 | `delete_message` | 清理特定暂存或历史消息。 |
+
+---
+
+## 💬 使用示例
+
+完成配置后，直接用自然语言对 AI 代理下指令，代理会自动挑选合适的工具。以下列出常见指令与代理实际调用的工具参数：
+
+### 📢 发送格式化通知
+
+> 「在 Telegram 通知我今晚的构建成功了，并附上一个连到 https://example.com 的按钮」
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "✅ *今晚构建成功！*",
+    "parse_mode": "Markdown",
+    "inline_buttons": [[{"text": "仪表板", "url": "https://example.com"}]]
+  }
+}
+```
+
+### 📁 传送本机文件
+
+> 「把 `logs/app.log` 传到我的 Telegram，并摘要错误内容」
+
+```json
+{
+  "tool": "send_local_document",
+  "arguments": {
+    "file_path": "logs/app.log",
+    "caption": "错误日志摘要：3 次超时警告"
+  }
+}
+```
+
+### 🖼️ 发送相册
+
+> 「把 `screenshots/` 里的三张截图以一则相册传到我的 Telegram」
+
+```json
+{
+  "tool": "send_media_album",
+  "arguments": {
+    "file_paths": ["screenshots/1.png", "screenshots/2.png", "screenshots/3.png"],
+    "caption": "最新 UI 截图"
+  }
+}
+```
+
+### 🗳️ 在群组发起测验
+
+> 「在 chat ID -1001234567890 发一则测验：HTTPS 使用哪个端口？选项 80／443／8080，正解 443，并附简短解析」
+
+```json
+{
+  "tool": "send_poll",
+  "arguments": {
+    "chat_id": "-1001234567890",
+    "question": "HTTPS 使用哪个端口？",
+    "options": ["80", "443", "8080"],
+    "type": "quiz",
+    "correct_option_id": 1,
+    "explanation": "HTTPS 默认使用端口 443。"
+  }
+}
+```
+
+### ♻️ 更新或清理消息
+
+> 「把那条部署通知改成『已完成』，然后删除旧的提醒（ID 120）」
+
+```json
+{
+  "tool": "edit_message_text",
+  "arguments": { "message_id": 123, "text": "🚀 部署**已完成**" }
+}
+```
+
+```json
+{
+  "tool": "delete_message",
+  "arguments": { "message_id": 120 }
+}
+```
+
+> 💡 未提供 `chat_id` 时，消息送到 `TELEGRAM_DEFAULT_CHAT_ID`；明确传入 `chat_id` 即可发送给任何用户、群组或频道——见上方第 4️⃣ 步。
 
 ---
 
