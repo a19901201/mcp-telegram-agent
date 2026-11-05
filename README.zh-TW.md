@@ -68,7 +68,7 @@
 
 #### ✅ 範例 A — 通用預設配置（建議）
 
-適用於**所有** MCP 用戶端，不含任何用戶端專屬欄位——每次工具呼叫前都會先向你確認：
+適用於**所有** MCP 用戶端的通用配置——只需填入你的權杖與 chat_id：
 
 ```json
 {
@@ -85,45 +85,18 @@
 }
 ```
 
-> 💡 上述配置**刻意省略**了 `autoApprove` 欄位。這是最安全、可攜的預設做法：AI 代理每次呼叫工具前都會徵求你的同意，且此配置可直接用於 Claude Desktop 與任何其他用戶端。
-
-#### ⚡ 範例 B — VS Code Cline 自動核准（選用）
-
-> ⚠️ **`autoApprove` 是 VS Code Cline 專屬欄位**（`cline_mcp_settings.json`）。Claude Desktop 不支援此欄位——請**勿**將此區塊複製到 `claude_desktop_config.json`。
-
-若你希望 Cline 發送訊息與檔案時**免於每次人工確認**，請在範例 A 的基礎上加上 `autoApprove` 白名單：
+> 💡 **兩個環境變數皆為選填。** 缺少任一變數時伺服器仍會正常啟動，只在實際呼叫需要權杖或預設 chat_id 的工具時，回傳清楚的錯誤說明。也可以整段省略 `env` 區塊，進行不帶憑證的試運行：
 
 ```json
 {
   "mcpServers": {
     "Telegram": {
       "command": "uvx",
-      "args": ["mcp-telegram-agent"],
-      "env": {
-        "TELEGRAM_BOT_TOKEN": "你的_BOT_TOKEN",
-        "TELEGRAM_DEFAULT_CHAT_ID": "你的_CHAT_ID"
-      },
-      "autoApprove": [
-        "send_text_message",
-        "send_chat_action",
-        "send_local_document",
-        "send_local_photo",
-        "send_local_video",
-        "send_local_audio_or_voice",
-        "send_media_album",
-        "send_poll",
-        "send_location",
-        "send_contact",
-        "send_dice",
-        "edit_message_text",
-        "delete_message"
-      ]
+      "args": ["mcp-telegram-agent"]
     }
   }
 }
 ```
-
-> 🔐 **安全性提醒**：啟用 `autoApprove` 後，AI 代理將能**自主**發送訊息、檔案與多媒體。請僅在完全信任目標聊天對象時開啟。
 
 ---
 
@@ -144,6 +117,93 @@
 | `send_chat_action` | 向用戶端顯示當前操作狀態，如打字中與上傳檔案中。 |
 | `edit_message_text` | 動態更新既有訊息內容與按鈕。 |
 | `delete_message` | 清理特定暫存或歷史訊息。 |
+
+---
+
+## 💬 使用範例
+
+完成配置後，直接用自然語言對 AI 代理下指令，代理會自動挑選合適的工具。以下列出常見指令與代理實際呼叫的工具參數：
+
+### 📢 發送格式化通知
+
+> 「在 Telegram 通知我今晚的建置成功了，並附上一個連到 https://example.com 的按鈕」
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "✅ *今晚建置成功！*",
+    "parse_mode": "Markdown",
+    "inline_buttons": [[{"text": "儀表板", "url": "https://example.com"}]]
+  }
+}
+```
+
+### 📁 傳送本機檔案
+
+> 「把 `logs/app.log` 傳到我的 Telegram，並摘要錯誤內容」
+
+```json
+{
+  "tool": "send_local_document",
+  "arguments": {
+    "file_path": "logs/app.log",
+    "caption": "錯誤日誌摘要：3 次逾時警告"
+  }
+}
+```
+
+### 🖼️ 發送相簿
+
+> 「把 `screenshots/` 裡的三張截圖以一則相簿傳到我的 Telegram」
+
+```json
+{
+  "tool": "send_media_album",
+  "arguments": {
+    "file_paths": ["screenshots/1.png", "screenshots/2.png", "screenshots/3.png"],
+    "caption": "最新 UI 截圖"
+  }
+}
+```
+
+### 🗳️ 在群組發起測驗
+
+> 「在 chat ID -1001234567890 發一則測驗：HTTPS 使用哪個連接埠？選項 80／443／8080，正解 443，並附簡短解析」
+
+```json
+{
+  "tool": "send_poll",
+  "arguments": {
+    "chat_id": "-1001234567890",
+    "question": "HTTPS 使用哪個連接埠？",
+    "options": ["80", "443", "8080"],
+    "type": "quiz",
+    "correct_option_id": 1,
+    "explanation": "HTTPS 預設使用連接埠 443。"
+  }
+}
+```
+
+### ♻️ 更新或清理訊息
+
+> 「把那則部署通知改成『已完成』，然後刪除舊的提醒（ID 120）」
+
+```json
+{
+  "tool": "edit_message_text",
+  "arguments": { "message_id": 123, "text": "🚀 部署**已完成**" }
+}
+```
+
+```json
+{
+  "tool": "delete_message",
+  "arguments": { "message_id": 120 }
+}
+```
+
+> 💡 未提供 `chat_id` 時，訊息送到 `TELEGRAM_DEFAULT_CHAT_ID`；明確傳入 `chat_id` 即可發送給任何使用者、群組或頻道——見上方第 4️⃣ 步。
 
 ---
 

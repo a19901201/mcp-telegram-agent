@@ -68,7 +68,7 @@ Add the configuration below to your MCP settings file (e.g., `cline_mcp_settings
 
 #### ✅ Example A — Universal Default (Recommended)
 
-Works with **every** MCP client. No client-specific fields — each tool call will ask for your confirmation before executing:
+A universal configuration that works with **every** MCP client — just fill in your bot token and chat ID:
 
 ```json
 {
@@ -85,45 +85,18 @@ Works with **every** MCP client. No client-specific fields — each tool call wi
 }
 ```
 
-> 💡 The `autoApprove` field above is **intentionally omitted**. This is the safe, portable default: the agent will prompt you for approval on every tool call, and the config stays valid for Claude Desktop and any other client.
-
-#### ⚡ Example B — VS Code Cline Auto-Approve (Optional)
-
-> ⚠️ **`autoApprove` is a VS Code Cline–specific field** (`cline_mcp_settings.json`). Claude Desktop does not support it — do **not** copy this block into `claude_desktop_config.json`.
-
-If you want Cline to send messages and files **without asking for confirmation every time**, add the `autoApprove` whitelist on top of Example A:
+> 💡 **Both `env` variables are optional.** If they are missing, the server still starts normally — it returns a clear, human-readable error only when a tool call actually needs the token or the fallback chat ID. This also allows a credential-free trial run with no `env` block at all:
 
 ```json
 {
   "mcpServers": {
     "Telegram": {
       "command": "uvx",
-      "args": ["mcp-telegram-agent"],
-      "env": {
-        "TELEGRAM_BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_DEFAULT_CHAT_ID": "YOUR_CHAT_ID"
-      },
-      "autoApprove": [
-        "send_text_message",
-        "send_chat_action",
-        "send_local_document",
-        "send_local_photo",
-        "send_local_video",
-        "send_local_audio_or_voice",
-        "send_media_album",
-        "send_poll",
-        "send_location",
-        "send_contact",
-        "send_dice",
-        "edit_message_text",
-        "delete_message"
-      ]
+      "args": ["mcp-telegram-agent"]
     }
   }
 }
 ```
-
-> 🔐 **Security note**: with `autoApprove` enabled, the agent can send messages, files and media **autonomously**. Only enable it if you fully trust the bot's target chats.
 
 ---
 
@@ -144,6 +117,93 @@ If you want Cline to send messages and files **without asking for confirmation e
 | `send_chat_action` | Display temporary bot statuses (typing, uploading). |
 | `edit_message_text` | Dynamically update previously sent text and keyboards. |
 | `delete_message` | Clean up or remove specific messages. |
+
+---
+
+## 💬 Usage Examples
+
+Once configured, simply talk to your AI agent in natural language — it picks the right tool automatically. Below are typical requests together with the tool calls the agent makes:
+
+### 📢 Send a formatted notification
+
+> "Tell me in Telegram that the nightly build succeeded, with a button linking to https://example.com"
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "✅ *Nightly build succeeded!*",
+    "parse_mode": "Markdown",
+    "inline_buttons": [[{"text": "Dashboard", "url": "https://example.com"}]]
+  }
+}
+```
+
+### 📁 Share local files
+
+> "Upload `logs/app.log` to my Telegram and summarize the errors"
+
+```json
+{
+  "tool": "send_local_document",
+  "arguments": {
+    "file_path": "logs/app.log",
+    "caption": "Error log summary: 3 timeout warnings"
+  }
+}
+```
+
+### 🖼️ Send an album
+
+> "Send the three screenshots in `screenshots/` to my Telegram as one album"
+
+```json
+{
+  "tool": "send_media_album",
+  "arguments": {
+    "file_paths": ["screenshots/1.png", "screenshots/2.png", "screenshots/3.png"],
+    "caption": "Latest UI screenshots"
+  }
+}
+```
+
+### 🗳️ Run a quiz in a group
+
+> "Post a quiz to chat ID -1001234567890: which port does HTTPS use? Options 80 / 443 / 8080, the answer is 443, with a short explanation"
+
+```json
+{
+  "tool": "send_poll",
+  "arguments": {
+    "chat_id": "-1001234567890",
+    "question": "Which port does HTTPS use?",
+    "options": ["80", "443", "8080"],
+    "type": "quiz",
+    "correct_option_id": 1,
+    "explanation": "HTTPS defaults to port 443."
+  }
+}
+```
+
+### ♻️ Update or clean up messages
+
+> "Change that deployment notice to 'finished', then delete the old reminder (ID 120)"
+
+```json
+{
+  "tool": "edit_message_text",
+  "arguments": { "message_id": 123, "text": "🚀 Deployment **finished**" }
+}
+```
+
+```json
+{
+  "tool": "delete_message",
+  "arguments": { "message_id": 120 }
+}
+```
+
+> 💡 When `chat_id` is omitted, messages go to `TELEGRAM_DEFAULT_CHAT_ID`; pass it explicitly to reach any user, group, or channel — see step 4️⃣ above.
 
 ---
 
