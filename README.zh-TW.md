@@ -119,7 +119,7 @@
 * limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，被截斷的其餘符合項目會留待下次呼叫。未符合白名單或 types 條件的更新仍會被讀取推進（offset 為單一串流，無法單獨保留某個型別或某間聊天室的更新）。
 * 未設定白名單時，`get_updates` / `wait_for_reply` 只會回傳設定提示。修改 `env` 後請重啟 MCP 伺服器。
 
-> ⚠️ **時間是關鍵：** Telegram 的 callback_query 只有數秒有效。`wait_for_reply` / `get_updates` 回傳按鈕點擊後應立刻呼叫 `answer_callback_query`；間隔過長會收到 `query is too old`（平台限制，並非程式錯誤）。
+> ⚠️ **時間是關鍵：** Telegram 的 callback_query 只有數秒有效。`get_updates` 與 `wait_for_reply` 預設開啟 `auto_answer`，取回按鈕點擊的當下就會自動應答；僅當關閉該選項時，才需要在收到按鈕點擊後立刻呼叫 `answer_callback_query`——間隔過長會收到 `query is too old`（平台限制，並非程式錯誤）。
 
 ---
 
@@ -257,7 +257,7 @@
 }
 ```
 
-> 💡 需先完成第 6️⃣ 步白名單設定。`get_updates` 適合一次性非阻塞查看（可加 `mark_read: false` 先偷看不消耗更新）；`wait_for_reply` 則是長輪詢等到回覆為止。收到按鈕點擊後要立刻 `answer_callback_query`，否則 Telegram 會回 `query is too old`。
+> 💡 需先完成第 6️⃣ 步白名單設定。`get_updates` 適合一次性非阻塞查看（可加 `mark_read: false` 先偷看不消耗更新）；`wait_for_reply` 則是長輪詢等到回覆為止。按鈕點擊會在取回當下自動應答；僅當需要自訂提示、彈窗或網址時才傳 `auto_answer: false` 並改用 `answer_callback_query`。
 
 > 💡 未提供 `chat_id` 時，訊息送到 `TELEGRAM_DEFAULT_CHAT_ID`；明確傳入 `chat_id` 即可發送給任何使用者、群組或頻道——見上方第 4️⃣ 步。
 

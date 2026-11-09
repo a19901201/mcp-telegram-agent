@@ -145,6 +145,9 @@ ReceiveType = Literal["message", "callback_query", "poll_answer"]
 
 _ALLOWED_UPDATES = ["message", "callback_query", "poll_answer"]
 
+# 自動應答 callback_query 時送出的通用提示（消除手動應答超窗競態）
+AUTO_ANSWER_TEXT = "✓ Received"
+
 
 def _parse_id_list(raw: Optional[str]) -> List[str]:
     """把逗號分隔的 ID 字串解析成字串清單（保留負號，去除空白）。"""
@@ -331,6 +334,7 @@ async def get_updates(
     types: Optional[List[ReceiveType]] = None,
     limit: int = 20,
     mark_read: bool = True,
+    auto_answer: bool = True,
 ) -> str:
     """Fetch pending user updates (messages, button clicks, poll answers) once without waiting.
 
@@ -338,10 +342,15 @@ async def get_updates(
     chat_id 未傳時使用 TELEGRAM_DEFAULT_CHAT_ID；未設定白名單時回傳設定提示。
     types 可選 message、callback_query、poll_answer，預設全部。
     mark_read=False 時不移動 offset，同一批訊息下次仍會回傳（預設會讀取並推進）。
+    auto_answer=True（預設，僅 mark_read=True 時生效）時，回傳的 callback_query
+    會當下立即以通用提示應答，payload 標記 auto_answered=True，消除取回後
+    手動應答超過有效窗口（query is too old）的競態；應答失敗時改標記
+    auto_answer_error，不影響更新回傳。需要自訂提示文字、show_alert 或 url
+    時設 auto_answer=False，改以 answer_callback_query 手動應答。
     limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，
-    截斷的其餘符合項目會留待下次呼叫；無符合項時整批消耗（含白名單外
-    與 types 以外的更新）以免積壓堆積——offset 為單一串流，無法單獨
-    保留某個型別或某間聊天室的更新。
+    截斷的其餘符合項目會留待下次呼叫（因此其應答也延後到下一頁取回時）；
+    無符合項時整批消耗（含白名單外與 types 以外的更新）以免積壓堆積——
+    offset 為單一串流，無法單獨保留某個型別或某間聊天室的更新。
     注意：首次呼叫（尚無狀態檔）時 Telegram 會回傳全部未確認的 pending
     updates，且 mark_read 預設 true 會將其讀取推進；若不想消耗歷史積壓，
     第一次呼叫請先以 mark_read=False 預覽。
@@ -394,6 +403,10 @@ async def get_updates(
             f"（offset={max_id}）"
         )
 
+    if mark_read and auto_answer:
+        # 取回當下立即應答回調，避免 agent 之後手動應答已超窗
+        await _auto_answer_callbacks(filtered)
+
     return json.dumps(
         {
             "count": len(filtered),
@@ -411,12 +424,17 @@ async def wait_for_reply(
     types: Optional[List[ReceiveType]] = None,
     timeout: int = 25,
     poll_interval: int = 2,
+    auto_answer: bool = True,
 ) -> str:
     """Wait for the next user reply (message, button click, or poll answer) via long polling.
 
     長輪詢等待使用者下一則回覆（訊息／按鈕點擊／投票作答）。
     連續長輪詢（每段最長 10 秒）直到 timeout 秒內出現符合項目或逾時；
     poll_interval 僅用於網路錯誤後的退避等待（至少 1 秒），正常情況下不會隔段輪詢。
+    auto_answer=True（預設）時，回傳的 callback_query 會當下立即以通用提示
+    應答，payload 標記 auto_answered=True，不需也切勿再用 answer_callback_query
+    重複應答（將收到 query is too old）；應答失敗時改標記 auto_answer_error。
+    需要自訂提示文字、show_alert 或 url 時設 auto_answer=False。
     未設定白名單時回傳設定提示，請 AI 提醒使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重啟。
     注意：
     - 首次呼叫（尚無狀態檔）時會先撈回全部 pending updates，最舊的先被
@@ -466,6 +484,9 @@ async def wait_for_reply(
             )
             if matched:
                 _save_offset(offset)
+                if auto_answer:
+                    # 取回當下立即應答回調，避免 agent 之後手動應答已超窗
+                    await _auto_answer_callbacks(matched)
                 return json.dumps(
                     {"count": 1, "next_offset": offset, "updates": matched},
                     ensure_ascii=False,
@@ -473,6 +494,44 @@ async def wait_for_reply(
                 )
         # 這批沒有符合者，offset 已推進，存檔避免重複讀取
         _save_offset(offset)
+
+
+async def _post_answer_callback(callback_query_id: str, text: str = "") -> str:
+    """answerCallbackQuery 的底層 POST（供手動工具與自動應答共用）。"""
+    return await _execute_post(
+        "answerCallbackQuery",
+        {
+            "callback_query_id": callback_query_id,
+            "show_alert": False,
+            "cache_time": 0,
+            "text": text,
+        },
+    )
+
+
+async def _auto_answer_callbacks(items: List[Dict[str, Any]]) -> None:
+    """對回傳的 callback_query 事件立即自動應答，消除取回後的計時競態。
+
+    Telegram 的 callback_query 應答僅有數秒到數十秒有效窗口，取回後再
+    手動應答經常已超窗（query is too old）。此函式在回傳前當下應答，
+    並把結果記錄到 payload：成功為 auto_answered=True，失敗為
+    auto_answer_error=<原因>；任何應答失敗都不會阻斷更新本身回傳。
+    """
+    for item in items:
+        if item.get("type") != "callback_query":
+            continue
+        cb_id = (item.get("payload") or {}).get("callback_query_id")
+        if not cb_id:
+            continue
+        try:
+            result = await _post_answer_callback(str(cb_id), AUTO_ANSWER_TEXT)
+        except Exception as exc:  # 防禦性：應答失敗不得影響 updates 回傳
+            item["payload"]["auto_answer_error"] = str(exc)[:200]
+            continue
+        if result.startswith("Success"):
+            item["payload"]["auto_answered"] = True
+        else:
+            item["payload"]["auto_answer_error"] = result[:200]
 
 
 @mcp.tool()

@@ -123,7 +123,7 @@ By default the server only **sends**. To let your agent *read back* your replies
 * `limit` only caps how many matching updates are returned per call: the offset advances only past the last returned update, so the remaining matches stay queued for the next call. Updates that don't match the allowlist or `types` are still consumed — the offset is a single stream, so a single type or chat cannot be held back.
 * Without an allowlist, `get_updates` / `wait_for_reply` return a setup hint instead of updates. Restart the MCP server after editing `env`.
 
-> ⚠️ **Timing matters:** Telegram keeps a callback query valid for only a few seconds. Call `answer_callback_query` immediately after `wait_for_reply` / `get_updates` returns a button click — long gaps are rejected with `query is too old` (a platform limit, not a bug).
+> ⚠️ **Timing matters:** Telegram keeps a callback query valid for only a few seconds. `get_updates` and `wait_for_reply` answer button clicks automatically right when they are received (default `auto_answer: true`); only if you disable it must you call `answer_callback_query` immediately after a click is returned — long gaps are rejected with `query is too old` (a platform limit, not a bug).
 
 ---
 
@@ -261,7 +261,7 @@ Once configured, simply talk to your AI agent in natural language — it picks t
 }
 ```
 
-> 💡 Requires the step 6️⃣ allowlist. Use `get_updates` for a one-shot, non-blocking check (add `mark_read: false` to peek without consuming updates) and `wait_for_reply` to long-poll until something arrives. Answer callback queries immediately, or Telegram rejects them with `query is too old`.
+> 💡 Requires the step 6️⃣ allowlist. Use `get_updates` for a one-shot, non-blocking check (add `mark_read: false` to peek without consuming updates) and `wait_for_reply` to long-poll until something arrives. Callback clicks are auto-answered the moment they are fetched; pass `auto_answer: false` only when you need a custom prompt, alert, or URL via `answer_callback_query`.
 
 > 💡 When `chat_id` is omitted, messages go to `TELEGRAM_DEFAULT_CHAT_ID`; pass it explicitly to reach any user, group, or channel — see step 4️⃣ above.
 
