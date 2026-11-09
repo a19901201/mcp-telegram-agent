@@ -1046,6 +1046,154 @@
         "type": "object",
         "title": "delete_messageArguments"
       }
+    },
+    {
+      "name": "get_updates",
+      "description": "Fetch pending user updates (messages, button clicks, poll answers) once without waiting.\n\n一次性拉取待處理的更新並歸一化回傳，不等待新訊息。\nchat_id 未傳時使用 TELEGRAM_DEFAULT_CHAT_ID；未設定白名單時回傳設定提示。\ntypes 可選 message、callback_query、poll_answer，預設全部。\nmark_read=False 時不移動 offset，同一批訊息下次仍會回傳（預設會讀取並推進）。\n",
+      "inputSchema": {
+        "properties": {
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chat Id"
+          },
+          "types": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "message",
+                    "callback_query",
+                    "poll_answer"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Types"
+          },
+          "limit": {
+            "default": 20,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "mark_read": {
+            "default": true,
+            "title": "Mark Read",
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "title": "get_updatesArguments"
+      }
+    },
+    {
+      "name": "wait_for_reply",
+      "description": "Wait for the next user reply (message, button click, or poll answer) via long polling.\n\n長輪詢等待使用者下一則回覆（訊息／按鈕點擊／投票作答）。\n每隔 poll_interval 秒輪詢一次 getUpdates，timeout 秒內仍無符合項目則回傳逾時。\n未設定白名單時回傳設定提示，請 AI 提醒使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重啟。\n",
+      "inputSchema": {
+        "properties": {
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chat Id"
+          },
+          "types": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "message",
+                    "callback_query",
+                    "poll_answer"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Types"
+          },
+          "timeout": {
+            "default": 25,
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "poll_interval": {
+            "default": 2,
+            "title": "Poll Interval",
+            "type": "integer"
+          }
+        },
+        "type": "object",
+        "title": "wait_for_replyArguments"
+      }
+    },
+    {
+      "name": "answer_callback_query",
+      "description": "Acknowledge a callback button press so the loading spinner on the button stops.\n\n對使用者點擊的行內按鈕回應，關閉按鈕上的載入動畫；text 可顯示小提示。\ncallback_query_id 來自 get_updates / wait_for_reply 的 callback_query 事件。\n\nurl 傳入時以開啟網址取代 text 提示（須為 http/https 開頭），\n並與 text 互斥（兩者不可同時傳入）；cache_time 為結果快取秒數\n（0-604800），預設 0。\nshow_alert=True 時必須帶 text，否則回傳錯誤。\n注意：callback_query 只有數秒有效，get_updates / wait_for_reply 回傳後\n應立刻呼叫本工具；輪詢架構下若間隔過長會收到 query is too old，\n建議搭配 wait_for_reply 的長輪詢，或背景常駐輪詢並立即應答。\n",
+      "inputSchema": {
+        "properties": {
+          "callback_query_id": {
+            "title": "Callback Query Id",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "show_alert": {
+            "default": false,
+            "title": "Show Alert",
+            "type": "boolean"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "cache_time": {
+            "default": 0,
+            "title": "Cache Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "callback_query_id"
+        ],
+        "type": "object",
+        "title": "answer_callback_queryArguments"
+      }
     }
   ]
 }
