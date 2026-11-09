@@ -1,6 +1,8 @@
 # ===== 本機開發與測試專區（絕不推上公開庫） =====
+# pytest 單元測試入版控；live 冒煙腳本（需真實 token）除外
 dev_test/
-tests/
+tests/live_smoke_*.py
+dev_test/
 *.local
 *.session
 *.token

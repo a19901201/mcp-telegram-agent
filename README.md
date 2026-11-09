@@ -32,6 +32,7 @@ A Model Context Protocol (MCP) server empowering AI agents with Telegram Bot cap
 * **Rich Media & Local Files** — Deliver logs, reports, source code, images, audio, voice notes, videos, and multi-image albums (2–10 files).
 * **Interactive Tooling** — Launch quizzes, single/multiple-choice polls, GPS coordinates, digital contact cards, and animated dice.
 * **Message Lifecycle** — Broadcast bot statuses (typing, uploading) and edit or delete messages on the fly.
+* **Interactive Receive** — Pull or long-poll user replies (text messages, inline button clicks, poll answers) with `get_updates` / `wait_for_reply`, and acknowledge button presses with `answer_callback_query`.
 * **Instant uvx Execution** — Run directly with no virtual environments or manual package installs.
 
 ---
@@ -105,6 +106,25 @@ A universal configuration that works with **every** MCP client — just fill in 
 }
 ```
 
+### 6️⃣ Enable Interactive Receive (Optional)
+
+By default the server only **sends**. To let your agent *read back* your replies (text messages, inline button clicks, poll answers), add the allowlist variables to the same `env` block:
+
+```json
+"TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
+"TELEGRAM_ALLOWED_USER_IDS": "123456789"
+```
+
+* `TELEGRAM_ALLOWED_CHAT_IDS` — comma-separated chat allowlist; when set, updates from other chats are filtered out (group IDs are negative). `poll_answer` events carry no `chat_id`, so they cannot be matched against this list.
+* `TELEGRAM_ALLOWED_USER_IDS` — comma-separated user allowlist; when set, updates are also filtered by user ID. An update passes if it hits **any** configured list (each unset list is simply ignored).
+* `TELEGRAM_STATE_DIR` — optional directory for the persisted `getUpdates` offset file; defaults to a `mcp-telegram-agent` subfolder under the system temp directory.
+* First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
+* First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
+* `limit` only caps how many matching updates are returned per call: the offset advances only past the last returned update, so the remaining matches stay queued for the next call. Updates that don't match the allowlist or `types` are still consumed — the offset is a single stream, so a single type or chat cannot be held back.
+* Without an allowlist, `get_updates` / `wait_for_reply` return a setup hint instead of updates. Restart the MCP server after editing `env`.
+
+> ⚠️ **Timing matters:** Telegram keeps a callback query valid for only a few seconds. `get_updates` and `wait_for_reply` answer button clicks automatically right when they are received (default `auto_answer: true`); only if you disable it must you call `answer_callback_query` immediately after a click is returned — long gaps are rejected with `query is too old` (a platform limit, not a bug).
+
 ---
 
 ## 🧰 Available Tools
@@ -124,6 +144,9 @@ A universal configuration that works with **every** MCP client — just fill in 
 | `send_chat_action` | Display temporary bot statuses (typing, uploading). |
 | `edit_message_text` | Dynamically update previously sent text and keyboards. |
 | `delete_message` | Clean up or remove specific messages. |
+| `get_updates` | Fetch pending updates once (messages, button clicks, poll answers) without waiting. |
+| `wait_for_reply` | Long-poll until the next user reply arrives, with a timeout. |
+| `answer_callback_query` | Acknowledge a button press to stop its loading spinner; optional alert text or URL. |
 
 ---
 
@@ -209,6 +232,36 @@ Once configured, simply talk to your AI agent in natural language — it picks t
   "arguments": { "message_id": 120 }
 }
 ```
+
+### 📨 Wait for a reply and confirm a button click
+
+> "Ask me a yes/no question with inline buttons, wait for my answer, and tell me what I clicked"
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "Deploy to production now?",
+    "inline_buttons": [[{"text": "Yes", "callback_data": "deploy:yes"}, {"text": "No", "callback_data": "deploy:no"}]]
+  }
+}
+```
+
+```json
+{
+  "tool": "wait_for_reply",
+  "arguments": { "types": ["callback_query"], "timeout": 25 }
+}
+```
+
+```json
+{
+  "tool": "answer_callback_query",
+  "arguments": { "callback_query_id": "<callback_query.id from the click>", "text": "🚀 Deploying…" }
+}
+```
+
+> 💡 Requires the step 6️⃣ allowlist. Use `get_updates` for a one-shot, non-blocking check (add `mark_read: false` to peek without consuming updates) and `wait_for_reply` to long-poll until something arrives. Callback clicks are auto-answered the moment they are fetched; pass `auto_answer: false` only when you need a custom prompt, alert, or URL via `answer_callback_query`.
 
 > 💡 When `chat_id` is omitted, messages go to `TELEGRAM_DEFAULT_CHAT_ID`; pass it explicitly to reach any user, group, or channel — see step 4️⃣ above.
 

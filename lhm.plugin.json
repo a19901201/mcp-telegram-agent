@@ -1046,6 +1046,164 @@
         "type": "object",
         "title": "delete_messageArguments"
       }
+    },
+    {
+      "name": "get_updates",
+      "description": "Fetch pending user updates (messages, button clicks, poll answers) once without waiting.\n\n一次性拉取待處理的更新並歸一化回傳，不等待新訊息。\nchat_id 未傳時使用 TELEGRAM_DEFAULT_CHAT_ID；未設定白名單時回傳設定提示。\ntypes 可選 message、callback_query、poll_answer，預設全部。\nmark_read=False 時不移動 offset，同一批訊息下次仍會回傳（預設會讀取並推進）。\nauto_answer=True（預設，僅 mark_read=True 時生效）時，回傳的 callback_query\n會當下立即以通用提示應答，payload 標記 auto_answered=True，消除取回後\n手動應答超過有效窗口（query is too old）的競態；應答失敗時改標記\nauto_answer_error，不影響更新回傳。需要自訂提示文字、show_alert 或 url\n時設 auto_answer=False，改以 answer_callback_query 手動應答。\nlimit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，\n截斷的其餘符合項目會留待下次呼叫（因此其應答也延後到下一頁取回時）；無符合項時整批消耗（含白名單外\n與 types 以外的更新）以免積壓堆積——offset 為單一串流，無法單獨\n保留某個型別或某間聊天室的更新。\n注意：首次呼叫（尚無狀態檔）時 Telegram 會回傳全部未確認的 pending\nupdates，且 mark_read 預設 true 會將其讀取推進；若不想消耗歷史積壓，\n第一次呼叫請先以 mark_read=False 預覽。\n",
+      "inputSchema": {
+        "properties": {
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chat Id"
+          },
+          "types": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "message",
+                    "callback_query",
+                    "poll_answer"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Types"
+          },
+          "limit": {
+            "default": 20,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "mark_read": {
+            "default": true,
+            "title": "Mark Read",
+            "type": "boolean"
+          },
+          "auto_answer": {
+            "default": true,
+            "title": "Auto Answer",
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "title": "get_updatesArguments"
+      }
+    },
+    {
+      "name": "wait_for_reply",
+      "description": "Wait for the next user reply (message, button click, or poll answer) via long polling.\n\n長輪詢等待使用者下一則回覆（訊息／按鈕點擊／投票作答）。\n連續長輪詢（每段最長 10 秒）直到 timeout 秒內出現符合項目或逾時；\npoll_interval 僅用於網路錯誤後的退避等待（至少 1 秒），正常情況下不會隔段輪詢。\nauto_answer=True（預設）時，回傳的 callback_query 會當下立即以通用提示\n應答，payload 標記 auto_answered=True，不需也切勿再用 answer_callback_query\n重複應答（將收到 query is too old）；應答失敗時改標記 auto_answer_error。\n需要自訂提示文字、show_alert 或 url 時設 auto_answer=False。\n未設定白名單時回傳設定提示，請 AI 提醒使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重啟。\n注意：\n- 首次呼叫（尚無狀態檔）時會先撈回全部 pending updates，最舊的先被\n  比對回傳；建議先以 get_updates(mark_read=False) 預覽確認沒有積壓。\n- types 以外的更新仍會被讀取推進（offset 單一串流，無法單獨保留）；\n  若等待訊息期間按鈕被點擊，該 callback_query 會被消耗而不回傳，\n  需要接收點擊事件時請讓 types 涵蓋 callback_query。\n",
+      "inputSchema": {
+        "properties": {
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chat Id"
+          },
+          "types": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "message",
+                    "callback_query",
+                    "poll_answer"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Types"
+          },
+          "timeout": {
+            "default": 25,
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "poll_interval": {
+            "default": 2,
+            "title": "Poll Interval",
+            "type": "integer"
+          },
+          "auto_answer": {
+            "default": true,
+            "title": "Auto Answer",
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "title": "wait_for_replyArguments"
+      }
+    },
+    {
+      "name": "answer_callback_query",
+      "description": "Acknowledge a callback button press so the loading spinner on the button stops.\n\n對使用者點擊的行內按鈕回應，關閉按鈕上的載入動畫；text 可顯示小提示。\ncallback_query_id 來自 get_updates / wait_for_reply 的 callback_query 事件。\n\nurl 傳入時以開啟網址取代 text 提示（須為 http/https 開頭），\n並與 text 互斥（兩者不可同時傳入）；cache_time 為結果快取秒數\n（0-604800），預設 0。\nshow_alert=True 時必須帶 text，否則回傳錯誤。\n注意：callback_query 只有數秒有效，get_updates / wait_for_reply 回傳後\n應立刻呼叫本工具；輪詢架構下若間隔過長會收到 query is too old，\n建議搭配 wait_for_reply 的長輪詢，或背景常駐輪詢並立即應答。\n",
+      "inputSchema": {
+        "properties": {
+          "callback_query_id": {
+            "title": "Callback Query Id",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "show_alert": {
+            "default": false,
+            "title": "Show Alert",
+            "type": "boolean"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "cache_time": {
+            "default": 0,
+            "title": "Cache Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "callback_query_id"
+        ],
+        "type": "object",
+        "title": "answer_callback_queryArguments"
+      }
     }
   ]
 }

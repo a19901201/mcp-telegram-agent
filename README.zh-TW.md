@@ -29,6 +29,7 @@
 * **實體本機檔案與相簿** — 輕鬆發送日誌、報表、原始碼、圖片、語音、影片，以及 2 至 10 個項目的多媒體相簿。
 * **豐富互動元件** — 支援即時投票、測驗、地圖經緯度座標、電話名片及官方動畫表情符號。
 * **狀態與訊息生命週期維護** — 支援即時廣播機器人打字狀態，並能動態更新或刪除指定訊息。
+* **互動接收** — 以 `get_updates` / `wait_for_reply` 拉取或長輪詢使用者回覆（訊息、行內按鈕點擊、投票作答），並用 `answer_callback_query` 回應按鈕點擊。
 * **uvx 極速啟動** — 免除手動建立虛擬環境與安裝依賴的繁瑣步驟。
 
 ---
@@ -102,6 +103,24 @@
 }
 ```
 
+### 6️⃣ 開啟互動接收（選用）
+
+預設伺服器只會**發送**。若要讓 AI 代理「讀回」你的回覆（文字訊息、行內按鈕點擊、投票作答），在同一個 `env` 區塊加入白名單變數：
+
+```json
+"TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
+"TELEGRAM_ALLOWED_USER_IDS": "123456789"
+```
+
+* `TELEGRAM_ALLOWED_CHAT_IDS` — Chat ID 白名單（逗號分隔）；已設定時，來自其他聊天室的更新一律過濾（群組 ID 為負數）。`poll_answer` 事件沒有 `chat_id`，無法與此名單比對。
+* `TELEGRAM_ALLOWED_USER_IDS` — User ID 白名單（逗號分隔）；已設定時，更新也會以 User ID 過濾。更新只要命中**任一**已設定的名單即放行（未設定的名單不參與判定）。
+* `TELEGRAM_STATE_DIR` — 選填；`getUpdates` offset 持久化檔案的存放目錄，未設定時預設寫入系統暫存目錄下的 `mcp-telegram-agent` 子目錄。
+* 首次呼叫注意：第一次呼叫 `get_updates`（尚無狀態檔）時，Telegram 會回傳全部未確認的 pending updates，且 `mark_read` 預設 true 會將其讀取推進；若不想消耗歷史積壓，第一次呼叫請先用 `mark_read: false` 預覽。
+* limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，被截斷的其餘符合項目會留待下次呼叫。未符合白名單或 types 條件的更新仍會被讀取推進（offset 為單一串流，無法單獨保留某個型別或某間聊天室的更新）。
+* 未設定白名單時，`get_updates` / `wait_for_reply` 只會回傳設定提示。修改 `env` 後請重啟 MCP 伺服器。
+
+> ⚠️ **時間是關鍵：** Telegram 的 callback_query 只有數秒有效。`get_updates` 與 `wait_for_reply` 預設開啟 `auto_answer`，取回按鈕點擊的當下就會自動應答；僅當關閉該選項時，才需要在收到按鈕點擊後立刻呼叫 `answer_callback_query`——間隔過長會收到 `query is too old`（平台限制，並非程式錯誤）。
+
 ---
 
 ## 🧰 提供之工具列表
@@ -121,6 +140,9 @@
 | `send_chat_action` | 向用戶端顯示當前操作狀態，如打字中與上傳檔案中。 |
 | `edit_message_text` | 動態更新既有訊息內容與按鈕。 |
 | `delete_message` | 清理特定暫存或歷史訊息。 |
+| `get_updates` | 一次性拉取待處理更新（訊息、按鈕點擊、投票作答），不等待新訊息。 |
+| `wait_for_reply` | 長輪詢等待使用者下一則回覆，逾時自動返回。 |
+| `answer_callback_query` | 回應行內按鈕點擊以關閉載入動畫，可附提示文字或開啟網址。 |
 
 ---
 
@@ -206,6 +228,36 @@
   "arguments": { "message_id": 120 }
 }
 ```
+
+### 📨 等待回覆並確認按鈕點擊
+
+> 「傳給我一個是否問題的行內按鈕，等我點選後回報我選了什麼」
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "現在部署到正式環境？",
+    "inline_buttons": [[{"text": "好", "callback_data": "deploy:yes"}, {"text": "不要", "callback_data": "deploy:no"}]]
+  }
+}
+```
+
+```json
+{
+  "tool": "wait_for_reply",
+  "arguments": { "types": ["callback_query"], "timeout": 25 }
+}
+```
+
+```json
+{
+  "tool": "answer_callback_query",
+  "arguments": { "callback_query_id": "<點擊事件中的 callback_query.id>", "text": "🚀 部署中…" }
+}
+```
+
+> 💡 需先完成第 6️⃣ 步白名單設定。`get_updates` 適合一次性非阻塞查看（可加 `mark_read: false` 先偷看不消耗更新）；`wait_for_reply` 則是長輪詢等到回覆為止。按鈕點擊會在取回當下自動應答；僅當需要自訂提示、彈窗或網址時才傳 `auto_answer: false` 並改用 `answer_callback_query`。
 
 > 💡 未提供 `chat_id` 時，訊息送到 `TELEGRAM_DEFAULT_CHAT_ID`；明確傳入 `chat_id` 即可發送給任何使用者、群組或頻道——見上方第 4️⃣ 步。
 
