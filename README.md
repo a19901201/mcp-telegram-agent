@@ -115,9 +115,10 @@ By default the server only **sends**. To let your agent *read back* your replies
 "TELEGRAM_ALLOWED_USER_IDS": "123456789"
 ```
 
-* `TELEGRAM_ALLOWED_CHAT_IDS` — comma-separated chat allowlist; only updates from these chats are returned (group IDs are negative).
-* `TELEGRAM_ALLOWED_USER_IDS` — comma-separated user allowlist; an update passes if it hits **either** list. `poll_answer` events carry no `chat_id`, so they can only be filtered by this user list.
+* `TELEGRAM_ALLOWED_CHAT_IDS` — comma-separated chat allowlist; when set, updates from other chats are filtered out (group IDs are negative). `poll_answer` events carry no `chat_id`, so they cannot be matched against this list.
+* `TELEGRAM_ALLOWED_USER_IDS` — comma-separated user allowlist; when set, updates are also filtered by user ID. An update passes if it hits **any** configured list (each unset list is simply ignored).
 * `TELEGRAM_STATE_DIR` — optional directory for the persisted `getUpdates` offset file; defaults to a `mcp-telegram-agent` subfolder under the system temp directory.
+* First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
 * Without an allowlist, `get_updates` / `wait_for_reply` return a setup hint instead of updates. Restart the MCP server after editing `env`.
 
 > ⚠️ **Timing matters:** Telegram keeps a callback query valid for only a few seconds. Call `answer_callback_query` immediately after `wait_for_reply` / `get_updates` returns a button click — long gaps are rejected with `query is too old` (a platform limit, not a bug).

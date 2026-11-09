@@ -112,9 +112,10 @@
 "TELEGRAM_ALLOWED_USER_IDS": "123456789"
 ```
 
-* `TELEGRAM_ALLOWED_CHAT_IDS` — Chat ID 白名單（逗號分隔）；只有來自這些聊天室的更新會被回傳（群組 ID 為負數）。
-* `TELEGRAM_ALLOWED_USER_IDS` — User ID 白名單（逗號分隔）；與 Chat ID 白名單**任一**命中即放行。`poll_answer` 事件沒有 `chat_id`，只能靠此名單過濾。
+* `TELEGRAM_ALLOWED_CHAT_IDS` — Chat ID 白名單（逗號分隔）；已設定時，來自其他聊天室的更新一律過濾（群組 ID 為負數）。`poll_answer` 事件沒有 `chat_id`，無法與此名單比對。
+* `TELEGRAM_ALLOWED_USER_IDS` — User ID 白名單（逗號分隔）；已設定時，更新也會以 User ID 過濾。更新只要命中**任一**已設定的名單即放行（未設定的名單不參與判定）。
 * `TELEGRAM_STATE_DIR` — 選填；`getUpdates` offset 持久化檔案的存放目錄，未設定時預設寫入系統暫存目錄下的 `mcp-telegram-agent` 子目錄。
+* 首次呼叫注意：第一次呼叫 `get_updates`（尚無狀態檔）時，Telegram 會回傳全部未確認的 pending updates，且 `mark_read` 預設 true 會將其讀取推進；若不想消耗歷史積壓，第一次呼叫請先用 `mark_read: false` 預覽。
 * 未設定白名單時，`get_updates` / `wait_for_reply` 只會回傳設定提示。修改 `env` 後請重啟 MCP 伺服器。
 
 > ⚠️ **時間是關鍵：** Telegram 的 callback_query 只有數秒有效。`wait_for_reply` / `get_updates` 回傳按鈕點擊後應立刻呼叫 `answer_callback_query`；間隔過長會收到 `query is too old`（平台限制，並非程式錯誤）。

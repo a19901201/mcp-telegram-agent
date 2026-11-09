@@ -8,6 +8,7 @@
 import asyncio
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -154,7 +155,7 @@ def _parse_id_list(raw: Optional[str]) -> List[str]:
 
 def _state_file() -> Path:
     """取得 offset 持久化檔案路徑；預設寫在使用者暫存目錄。"""
-    base = Path(STATE_DIR) if STATE_DIR else Path(os.environ.get("TEMP", ".")) / "mcp-telegram-agent"
+    base = Path(STATE_DIR) if STATE_DIR else Path(tempfile.gettempdir()) / "mcp-telegram-agent"
     base.mkdir(parents=True, exist_ok=True)
     return base / "updates_state.json"
 
@@ -246,8 +247,13 @@ def _filter_updates(
 ) -> List[Dict[str, Any]]:
     """依白名單（聊天室／使用者）與型別過濾歸一化後的更新。
 
-    chat_id 與 user_id 兩種白名單任一命中即放行（OR 邏輯）；
+    語意為「已設定的名單中，至少一個命中即放行」（OR）：
+    - 僅設 chat 名單 → 只依 chat_id 過濾；
+    - 僅設 user 名單 → 只依 user_id 過濾；
+    - 兩份都設 → 任一命中即放行（未設定的名單不參與判定）。
     兩者皆未設定時不過濾（由 _validate_receive_env 擋下此情況）。
+    poll_answer 沒有 chat_id，無法與 chat 名單比對；僅設 chat 名單時
+    其不受 chat 名單影響，需靠 user 名單過濾。
     """
     result: List[Dict[str, Any]] = []
     for item in normalized:
@@ -255,13 +261,19 @@ def _filter_updates(
             continue
         chat_id = item.get("chat_id")
         user_id = item.get("user_id")
-        chat_ok = not allowed_chat_ids or (
-            chat_id is not None and str(chat_id) in allowed_chat_ids
-        )
-        user_ok = not allowed_user_ids or (
-            user_id is not None and str(user_id) in allowed_user_ids
-        )
-        if not (chat_ok or user_ok):
+        evaluable = 0  # 已設定且可與此事件比對的名單數
+        passed = 0  # 其中命中的名單數
+        for allowed, id_val in (
+            (allowed_chat_ids, chat_id),
+            (allowed_user_ids, user_id),
+        ):
+            if not allowed or id_val is None:
+                continue  # 名單未設定或事件無此維度 ID，皆不適用
+            evaluable += 1
+            if str(id_val) in allowed:
+                passed += 1
+        # 有可評估名單時必須命中其一；完全無法評估時放行
+        if evaluable and not passed:
             continue
         if chat_id_hint and chat_id is not None and str(chat_id) != chat_id_hint:
             continue
@@ -326,6 +338,9 @@ async def get_updates(
     chat_id 未傳時使用 TELEGRAM_DEFAULT_CHAT_ID；未設定白名單時回傳設定提示。
     types 可選 message、callback_query、poll_answer，預設全部。
     mark_read=False 時不移動 offset，同一批訊息下次仍會回傳（預設會讀取並推進）。
+    注意：首次呼叫（尚無狀態檔）時 Telegram 會回傳全部未確認的 pending
+    updates，且 mark_read 預設 true 會將其讀取推進；若不想消耗歷史積壓，
+    第一次呼叫請先以 mark_read=False 預覽。
     """
     env_err = _validate_receive_env()
     if env_err:
@@ -386,7 +401,8 @@ async def wait_for_reply(
     """Wait for the next user reply (message, button click, or poll answer) via long polling.
 
     長輪詢等待使用者下一則回覆（訊息／按鈕點擊／投票作答）。
-    每隔 poll_interval 秒輪詢一次 getUpdates，timeout 秒內仍無符合項目則回傳逾時。
+    連續長輪詢（每段最長 10 秒）直到 timeout 秒內出現符合項目或逾時；
+    poll_interval 僅用於網路錯誤後的退避等待，正常情況下不會隔段輪詢。
     未設定白名單時回傳設定提示，請 AI 提醒使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重啟。
     """
     env_err = _validate_receive_env()
