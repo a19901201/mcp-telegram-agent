@@ -338,6 +338,10 @@ async def get_updates(
     chat_id 未傳時使用 TELEGRAM_DEFAULT_CHAT_ID；未設定白名單時回傳設定提示。
     types 可選 message、callback_query、poll_answer，預設全部。
     mark_read=False 時不移動 offset，同一批訊息下次仍會回傳（預設會讀取並推進）。
+    limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，
+    截斷的其餘符合項目會留待下次呼叫；無符合項時整批消耗（含白名單外
+    與 types 以外的更新）以免積壓堆積——offset 為單一串流，無法單獨
+    保留某個型別或某間聊天室的更新。
     注意：首次呼叫（尚無狀態檔）時 Telegram 會回傳全部未確認的 pending
     updates，且 mark_read 預設 true 會將其讀取推進；若不想消耗歷史積壓，
     第一次呼叫請先以 mark_read=False 預覽。
@@ -366,13 +370,23 @@ async def get_updates(
             normalized.append(item)
             max_id = max(max_id, item["update_id"] + 1)
 
-    if mark_read:
-        _save_offset(max_id)
-
     filtered = _filter_updates(
         normalized, allowed_chat_ids, allowed_user_ids, wanted_types, chat_hint
     )
     filtered = filtered[: max(1, limit)]
+
+    next_offset = offset
+    if mark_read:
+        if filtered:
+            # offset 只推進到實際回傳的最後一筆：limit 截斷的其餘符合
+            # 項目留待下次呼叫，不會因截斷而被靜默消耗；其前的非符合
+            # 項與不支援型別會依 Telegram offset 語意一併確認
+            next_offset = max(item["update_id"] for item in filtered) + 1
+            _save_offset(next_offset)
+        else:
+            # 無符合項時整批消耗，避免白名單外訊息無限堆積
+            _save_offset(max_id)
+            next_offset = max_id
 
     if not filtered:
         return (
@@ -383,7 +397,7 @@ async def get_updates(
     return json.dumps(
         {
             "count": len(filtered),
-            "next_offset": max_id if mark_read else offset,
+            "next_offset": next_offset,
             "updates": filtered,
         },
         ensure_ascii=False,
@@ -402,8 +416,14 @@ async def wait_for_reply(
 
     長輪詢等待使用者下一則回覆（訊息／按鈕點擊／投票作答）。
     連續長輪詢（每段最長 10 秒）直到 timeout 秒內出現符合項目或逾時；
-    poll_interval 僅用於網路錯誤後的退避等待，正常情況下不會隔段輪詢。
+    poll_interval 僅用於網路錯誤後的退避等待（至少 1 秒），正常情況下不會隔段輪詢。
     未設定白名單時回傳設定提示，請 AI 提醒使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重啟。
+    注意：
+    - 首次呼叫（尚無狀態檔）時會先撈回全部 pending updates，最舊的先被
+      比對回傳；建議先以 get_updates(mark_read=False) 預覽確認沒有積壓。
+    - types 以外的更新仍會被讀取推進（offset 單一串流，無法單獨保留）；
+      若等待訊息期間按鈕被點擊，該 callback_query 會被消耗而不回傳，
+      需要接收點擊事件時請讓 types 涵蓋 callback_query。
     """
     env_err = _validate_receive_env()
     if env_err:
@@ -432,7 +452,8 @@ async def wait_for_reply(
             # 409 衝突等不可重試錯誤直接回傳；網路抖動則退避後續試
             if "409" in err or "Conflict" in err:
                 return err
-            await asyncio.sleep(min(poll_interval, max(1, int(remaining))))
+            # 退避至少 1 秒（poll_interval<=0 時避免緊密重試），且不睡過 deadline
+            await asyncio.sleep(min(max(1, int(poll_interval)), remaining))
             continue
 
         for u in raw_updates:

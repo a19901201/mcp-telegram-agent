@@ -119,6 +119,8 @@ By default the server only **sends**. To let your agent *read back* your replies
 * `TELEGRAM_ALLOWED_USER_IDS` — comma-separated user allowlist; when set, updates are also filtered by user ID. An update passes if it hits **any** configured list (each unset list is simply ignored).
 * `TELEGRAM_STATE_DIR` — optional directory for the persisted `getUpdates` offset file; defaults to a `mcp-telegram-agent` subfolder under the system temp directory.
 * First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
+* First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
+* `limit` only caps how many matching updates are returned per call: the offset advances only past the last returned update, so the remaining matches stay queued for the next call. Updates that don't match the allowlist or `types` are still consumed — the offset is a single stream, so a single type or chat cannot be held back.
 * Without an allowlist, `get_updates` / `wait_for_reply` return a setup hint instead of updates. Restart the MCP server after editing `env`.
 
 > ⚠️ **Timing matters:** Telegram keeps a callback query valid for only a few seconds. Call `answer_callback_query` immediately after `wait_for_reply` / `get_updates` returns a button click — long gaps are rejected with `query is too old` (a platform limit, not a bug).

@@ -116,6 +116,7 @@
 * `TELEGRAM_ALLOWED_USER_IDS` — User ID 白名單（逗號分隔）；已設定時，更新也會以 User ID 過濾。更新只要命中**任一**已設定的名單即放行（未設定的名單不參與判定）。
 * `TELEGRAM_STATE_DIR` — 選填；`getUpdates` offset 持久化檔案的存放目錄，未設定時預設寫入系統暫存目錄下的 `mcp-telegram-agent` 子目錄。
 * 首次呼叫注意：第一次呼叫 `get_updates`（尚無狀態檔）時，Telegram 會回傳全部未確認的 pending updates，且 `mark_read` 預設 true 會將其讀取推進；若不想消耗歷史積壓，第一次呼叫請先用 `mark_read: false` 預覽。
+* limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，被截斷的其餘符合項目會留待下次呼叫。未符合白名單或 types 條件的更新仍會被讀取推進（offset 為單一串流，無法單獨保留某個型別或某間聊天室的更新）。
 * 未設定白名單時，`get_updates` / `wait_for_reply` 只會回傳設定提示。修改 `env` 後請重啟 MCP 伺服器。
 
 > ⚠️ **時間是關鍵：** Telegram 的 callback_query 只有數秒有效。`wait_for_reply` / `get_updates` 回傳按鈕點擊後應立刻呼叫 `answer_callback_query`；間隔過長會收到 `query is too old`（平台限制，並非程式錯誤）。
