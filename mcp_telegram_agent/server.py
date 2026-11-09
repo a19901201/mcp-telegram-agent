@@ -443,20 +443,64 @@ async def answer_callback_query(
     callback_query_id: str,
     text: str = "",
     show_alert: bool = False,
+    url: Optional[str] = None,
+    cache_time: int = 0,
 ) -> str:
     """Acknowledge a callback button press so the loading spinner on the button stops.
 
     對使用者點擊的行內按鈕回應，關閉按鈕上的載入動畫；text 可顯示小提示。
     callback_query_id 來自 get_updates / wait_for_reply 的 callback_query 事件。
+
+    url 傳入時以開啟網址取代 text 提示（須為 http/https 開頭），
+    並與 text 互斥（兩者不可同時傳入）；cache_time 為結果快取秒數
+    （0-604800），預設 0。
+    show_alert=True 時必須帶 text，否則回傳錯誤。
+    注意：callback_query 只有數秒有效，get_updates / wait_for_reply 回傳後
+    應立刻呼叫本工具；輪詢架構下若間隔過長會收到 query is too old，
+    建議搭配 wait_for_reply 的長輪詢，或背景常駐輪詢並立即應答。
     """
     if not BOT_TOKEN:
         return MISSING_BOT_TOKEN
+    if not callback_query_id or not str(callback_query_id).strip():
+        return (
+            "Error: callback_query_id is required. / "
+            "錯誤：callback_query_id 為必填"
+        )
+    if len(text) > 200:
+        return (
+            "Error: text must be at most 200 characters. / "
+            "錯誤：text 長度不可超過 200 字"
+        )
+    if show_alert and not text:
+        return (
+            "Error: text is required when show_alert is True. / "
+            "錯誤：show_alert=True 時 text 為必填"
+        )
+    if text and url:
+        return (
+            "Error: text and url are mutually exclusive. / "
+            "錯誤：text 與 url 不可同時傳入"
+        )
+    if url is not None and not str(url).startswith(("http://", "https://")):
+        return (
+            "Error: url must start with http:// or https:// / "
+            "錯誤：url 須以 http:// 或 https:// 開頭"
+        )
+    if not 0 <= cache_time <= 604800:
+        return (
+            "Error: cache_time must be between 0 and 604800. / "
+            "錯誤：cache_time 須介於 0 與 604800 之間"
+        )
+
     payload: Dict[str, Any] = {
         "callback_query_id": callback_query_id,
         "show_alert": show_alert,
+        "cache_time": cache_time,
     }
     if text:
         payload["text"] = text
+    if url:
+        payload["url"] = url
     return await _execute_post("answerCallbackQuery", payload)
 
 
