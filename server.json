@@ -7,12 +7,12 @@
     "url": "https://github.com/a19901201/mcp-telegram-agent",
     "source": "github"
   },
-  "version": "0.1.8",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-telegram-agent",
-      "version": "0.1.8",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       }
