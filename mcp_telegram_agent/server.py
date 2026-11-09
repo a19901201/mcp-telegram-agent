@@ -1,11 +1,14 @@
 """mcp-telegram-agent 伺服器主體邏輯。
 
 全功能 Telegram Bot 控制協議伺服器：文字通知、行內鍵盤、底部鍵盤、
-本機檔案與多媒體相簿、互動元件、訊息生命週期維護。
+本機檔案與多媒體相簿、互動元件、訊息生命週期維護，以及透過長輪詢
+（long polling，不使用 webhook）接收使用者回覆的互動工具。
 """
 
+import asyncio
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -24,11 +27,28 @@ mcp = MCPServer("TelegramAgentMCP")
 # 僅在實際呼叫需要權杖或預設 chat_id 的工具時回傳錯誤說明。
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 DEFAULT_CHAT_ID = os.environ.get("TELEGRAM_DEFAULT_CHAT_ID")
+# 白名單：使用者必須主動設定才會收到互動回覆；未設定時接收工具會回傳
+# 設定提示，讓 AI 知道需要補上 TELEGRAM_ALLOWED_CHAT_IDS 後重試。
+ALLOWED_CHAT_IDS = os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS")
+ALLOWED_USER_IDS = os.environ.get("TELEGRAM_ALLOWED_USER_IDS")
+STATE_DIR = os.environ.get("TELEGRAM_STATE_DIR")
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 VIDEO_EXTS = {".mp4", ".avi", ".mkv", ".mov", ".webm"}
 
 MISSING_CHAT_ID = "Error: Missing chat_id / 錯誤：缺少目標 chat_id"
+MISSING_ALLOWED_CHAT_IDS = (
+    "Error: TELEGRAM_ALLOWED_CHAT_IDS is not set. / 錯誤：尚未設定 "
+    "TELEGRAM_ALLOWED_CHAT_IDS。請在 MCP 設定檔 env 區塊加入 "
+    "TELEGRAM_ALLOWED_CHAT_IDS=你的_CHAT_ID（多個以逗號分隔，如 "
+    "123456789,-1001234567890），重啟 MCP 伺服器後再呼叫接收工具。\n"
+    "Action required: add TELEGRAM_ALLOWED_CHAT_IDS to the MCP server env "
+    "and restart the server before calling get_updates / wait_for_reply. / "
+    "請提示使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重試。"
+)
+MISSING_BOT_TOKEN = (
+    "Error: TELEGRAM_BOT_TOKEN is not set. / 錯誤：未設定 TELEGRAM_BOT_TOKEN"
+)
 
 
 class InlineButton(BaseModel):
@@ -102,15 +122,482 @@ async def _execute_post(
 
             result = resp.json()
             if resp.status_code == 200 and result.get("ok"):
-                message_id = result.get("result", {}).get("message_id")
-                return (
-                    f"Success ({endpoint}), message ID: {message_id}"
-                    if message_id
-                    else f"Success ({endpoint})"
-                )
+                raw_result = result.get("result")
+                # sendChatAction、answerCallbackQuery 等回傳 true，僅文字/檔案類回傳物件
+                if isinstance(raw_result, dict):
+                    message_id = raw_result.get("message_id")
+                    return (
+                        f"Success ({endpoint}), message ID: {message_id}"
+                        if message_id
+                        else f"Success ({endpoint})"
+                    )
+                return f"Success ({endpoint})"
             return f"Telegram API Error ({endpoint}): {result.get('description', resp.text)}"
         except Exception as e:
             return f"Connection Error ({endpoint}): {str(e)}"
+
+
+# =====================================================================
+# 接收層（getUpdates 長輪詢，不使用 webhook）
+# =====================================================================
+
+ReceiveType = Literal["message", "callback_query", "poll_answer"]
+
+_ALLOWED_UPDATES = ["message", "callback_query", "poll_answer"]
+
+# 自動應答 callback_query 時送出的通用提示（消除手動應答超窗競態）
+AUTO_ANSWER_TEXT = "✓ Received"
+
+
+def _parse_id_list(raw: Optional[str]) -> List[str]:
+    """把逗號分隔的 ID 字串解析成字串清單（保留負號，去除空白）。"""
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _state_file() -> Path:
+    """取得 offset 持久化檔案路徑；預設寫在使用者暫存目錄。"""
+    base = Path(STATE_DIR) if STATE_DIR else Path(tempfile.gettempdir()) / "mcp-telegram-agent"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "updates_state.json"
+
+
+def _load_offset() -> int:
+    """讀取上次處理到的 update_id；檔案不存在或格式異常時回 0。"""
+    path = _state_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return int(data.get("offset", 0))
+    except (FileNotFoundError, json.JSONDecodeError, TypeError, ValueError):
+        return 0
+
+
+def _save_offset(offset: int) -> None:
+    """把最新 offset 寫回狀態檔，避免 MCP 重啟後重複讀取舊訊息。"""
+    path = _state_file()
+    try:
+        path.write_text(json.dumps({"offset": offset}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _normalize_update(update: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """把 Telegram update 原始物件歸一化成單一格式。
+
+    回傳 dict 一律含：type、update_id、chat_id、user_id、text、payload。
+    不屬於三種支援型別時回 None。
+    """
+    update_id = update.get("update_id")
+    if update_id is None:
+        return None
+
+    if "message" in update and isinstance(update["message"], dict):
+        msg = update["message"]
+        chat = msg.get("chat", {})
+        return {
+            "type": "message",
+            "update_id": update_id,
+            "chat_id": chat.get("id"),
+            "user_id": (msg.get("from") or {}).get("id"),
+            "text": msg.get("text") or msg.get("caption") or "",
+            "payload": {
+                "message_id": msg.get("message_id"),
+                "reply_to_message_id": (msg.get("reply_to_message") or {}).get("message_id"),
+                "date": msg.get("date"),
+            },
+        }
+
+    if "callback_query" in update and isinstance(update["callback_query"], dict):
+        cb = update["callback_query"]
+        msg = cb.get("message") or {}
+        chat = msg.get("chat") or {}
+        return {
+            "type": "callback_query",
+            "update_id": update_id,
+            "chat_id": chat.get("id"),
+            "user_id": (cb.get("from") or {}).get("id"),
+            "text": cb.get("data") or "",
+            "payload": {
+                "callback_query_id": cb.get("id"),
+                "message_id": msg.get("message_id"),
+            },
+        }
+
+    if "poll_answer" in update and isinstance(update["poll_answer"], dict):
+        pa = update["poll_answer"]
+        return {
+            "type": "poll_answer",
+            "update_id": update_id,
+            "chat_id": None,  # poll_answer 沒有 chat_id，僅能以 user_id 或 poll_id 對應
+            "user_id": (pa.get("user") or {}).get("id"),
+            "text": "",
+            "payload": {
+                "poll_id": pa.get("poll_id"),
+                "option_ids": pa.get("option_ids"),
+            },
+        }
+
+    return None
+
+
+def _filter_updates(
+    normalized: List[Dict[str, Any]],
+    allowed_chat_ids: List[str],
+    allowed_user_ids: List[str],
+    wanted_types: List[str],
+    chat_id_hint: Optional[str],
+) -> List[Dict[str, Any]]:
+    """依白名單（聊天室／使用者）與型別過濾歸一化後的更新。
+
+    語意為「已設定的名單中，至少一個命中即放行」（OR）：
+    - 僅設 chat 名單 → 只依 chat_id 過濾；
+    - 僅設 user 名單 → 只依 user_id 過濾；
+    - 兩份都設 → 任一命中即放行（未設定的名單不參與判定）。
+    兩者皆未設定時不過濾（由 _validate_receive_env 擋下此情況）。
+    poll_answer 沒有 chat_id，無法與 chat 名單比對；僅設 chat 名單時
+    其不受 chat 名單影響，需靠 user 名單過濾。
+    """
+    result: List[Dict[str, Any]] = []
+    for item in normalized:
+        if item["type"] not in wanted_types:
+            continue
+        chat_id = item.get("chat_id")
+        user_id = item.get("user_id")
+        evaluable = 0  # 已設定且可與此事件比對的名單數
+        passed = 0  # 其中命中的名單數
+        for allowed, id_val in (
+            (allowed_chat_ids, chat_id),
+            (allowed_user_ids, user_id),
+        ):
+            if not allowed or id_val is None:
+                continue  # 名單未設定或事件無此維度 ID，皆不適用
+            evaluable += 1
+            if str(id_val) in allowed:
+                passed += 1
+        # 有可評估名單時必須命中其一；完全無法評估時放行
+        if evaluable and not passed:
+            continue
+        if chat_id_hint and chat_id is not None and str(chat_id) != chat_id_hint:
+            continue
+        result.append(item)
+    return result
+
+
+async def _get_updates_once(
+    offset: int,
+    timeout_s: int,
+    allowed_updates: List[str],
+) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """呼叫一次 getUpdates；回傳 (原始 updates 清單, 錯誤訊息)。
+
+    長輪詢 timeout 上限 50 秒（Telegram API 限制）。
+    """
+    if not BOT_TOKEN:
+        return None, MISSING_BOT_TOKEN
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    payload = {
+        "offset": offset if offset > 0 else None,
+        "timeout": min(timeout_s, 50),
+        "allowed_updates": allowed_updates,
+    }
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s + 10.0) as client:
+            resp = await client.post(url, json=payload)
+            result = resp.json()
+    except Exception as e:
+        return None, f"Connection Error (getUpdates): {str(e)}"
+
+    if resp.status_code == 200 and result.get("ok"):
+        return result.get("result") or [], None
+
+    desc = result.get("description", resp.text) if isinstance(result, dict) else resp.text
+    # 同一 token 只能有一個輪詢者，409 衝突為常見不可重試錯誤
+    return None, f"Telegram API Error (getUpdates): {desc}"
+
+
+def _validate_receive_env() -> Optional[str]:
+    """接收工具的前置檢查：回傳錯誤訊息或 None（通過）。"""
+    if not BOT_TOKEN:
+        return MISSING_BOT_TOKEN
+    if not _parse_id_list(ALLOWED_CHAT_IDS) and not _parse_id_list(ALLOWED_USER_IDS):
+        return MISSING_ALLOWED_CHAT_IDS
+    return None
+
+
+@mcp.tool()
+async def get_updates(
+    chat_id: Optional[str] = None,
+    types: Optional[List[ReceiveType]] = None,
+    limit: int = 20,
+    mark_read: bool = True,
+    auto_answer: bool = True,
+) -> str:
+    """Fetch pending user updates (messages, button clicks, poll answers) once without waiting.
+
+    一次性拉取待處理的更新並歸一化回傳，不等待新訊息。
+    chat_id 未傳時使用 TELEGRAM_DEFAULT_CHAT_ID；未設定白名單時回傳設定提示。
+    types 可選 message、callback_query、poll_answer，預設全部。
+    mark_read=False 時不移動 offset，同一批訊息下次仍會回傳（預設會讀取並推進）。
+    auto_answer=True（預設，僅 mark_read=True 時生效）時，回傳的 callback_query
+    會當下立即以通用提示應答，payload 標記 auto_answered=True，消除取回後
+    手動應答超過有效窗口（query is too old）的競態；應答失敗時改標記
+    auto_answer_error，不影響更新回傳。需要自訂提示文字、show_alert 或 url
+    時設 auto_answer=False，改以 answer_callback_query 手動應答。
+    limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，
+    截斷的其餘符合項目會留待下次呼叫（因此其應答也延後到下一頁取回時）；
+    無符合項時整批消耗（含白名單外與 types 以外的更新）以免積壓堆積——
+    offset 為單一串流，無法單獨保留某個型別或某間聊天室的更新。
+    注意：首次呼叫（尚無狀態檔）時 Telegram 會回傳全部未確認的 pending
+    updates，且 mark_read 預設 true 會將其讀取推進；若不想消耗歷史積壓，
+    第一次呼叫請先以 mark_read=False 預覽。
+    """
+    env_err = _validate_receive_env()
+    if env_err:
+        return env_err
+
+    allowed_chat_ids = _parse_id_list(ALLOWED_CHAT_IDS)
+    allowed_user_ids = _parse_id_list(ALLOWED_USER_IDS)
+    wanted_types = types or ["message", "callback_query", "poll_answer"]
+    chat_hint = chat_id or DEFAULT_CHAT_ID
+
+    offset = _load_offset()
+    raw_updates, err = await _get_updates_once(
+        offset=offset, timeout_s=2, allowed_updates=_ALLOWED_UPDATES
+    )
+    if err:
+        return err
+
+    normalized: List[Dict[str, Any]] = []
+    max_id = offset
+    for u in raw_updates:
+        item = _normalize_update(u)
+        if item:
+            normalized.append(item)
+            max_id = max(max_id, item["update_id"] + 1)
+
+    filtered = _filter_updates(
+        normalized, allowed_chat_ids, allowed_user_ids, wanted_types, chat_hint
+    )
+    filtered = filtered[: max(1, limit)]
+
+    next_offset = offset
+    if mark_read:
+        if filtered:
+            # offset 只推進到實際回傳的最後一筆：limit 截斷的其餘符合
+            # 項目留待下次呼叫，不會因截斷而被靜默消耗；其前的非符合
+            # 項與不支援型別會依 Telegram offset 語意一併確認
+            next_offset = max(item["update_id"] for item in filtered) + 1
+            _save_offset(next_offset)
+        else:
+            # 無符合項時整批消耗，避免白名單外訊息無限堆積
+            _save_offset(max_id)
+            next_offset = max_id
+
+    if not filtered:
+        return (
+            f"No pending updates matching filter. / 沒有符合條件的待處理更新"
+            f"（offset={max_id}）"
+        )
+
+    if mark_read and auto_answer:
+        # 取回當下立即應答回調，避免 agent 之後手動應答已超窗
+        await _auto_answer_callbacks(filtered)
+
+    return json.dumps(
+        {
+            "count": len(filtered),
+            "next_offset": next_offset,
+            "updates": filtered,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def wait_for_reply(
+    chat_id: Optional[str] = None,
+    types: Optional[List[ReceiveType]] = None,
+    timeout: int = 25,
+    poll_interval: int = 2,
+    auto_answer: bool = True,
+) -> str:
+    """Wait for the next user reply (message, button click, or poll answer) via long polling.
+
+    長輪詢等待使用者下一則回覆（訊息／按鈕點擊／投票作答）。
+    連續長輪詢（每段最長 10 秒）直到 timeout 秒內出現符合項目或逾時；
+    poll_interval 僅用於網路錯誤後的退避等待（至少 1 秒），正常情況下不會隔段輪詢。
+    auto_answer=True（預設）時，回傳的 callback_query 會當下立即以通用提示
+    應答，payload 標記 auto_answered=True，不需也切勿再用 answer_callback_query
+    重複應答（將收到 query is too old）；應答失敗時改標記 auto_answer_error。
+    需要自訂提示文字、show_alert 或 url 時設 auto_answer=False。
+    未設定白名單時回傳設定提示，請 AI 提醒使用者補上 TELEGRAM_ALLOWED_CHAT_IDS 後重啟。
+    注意：
+    - 首次呼叫（尚無狀態檔）時會先撈回全部 pending updates，最舊的先被
+      比對回傳；建議先以 get_updates(mark_read=False) 預覽確認沒有積壓。
+    - types 以外的更新仍會被讀取推進（offset 單一串流，無法單獨保留）；
+      若等待訊息期間按鈕被點擊，該 callback_query 會被消耗而不回傳，
+      需要接收點擊事件時請讓 types 涵蓋 callback_query。
+    """
+    env_err = _validate_receive_env()
+    if env_err:
+        return env_err
+
+    allowed_chat_ids = _parse_id_list(ALLOWED_CHAT_IDS)
+    allowed_user_ids = _parse_id_list(ALLOWED_USER_IDS)
+    wanted_types = types or ["message", "callback_query", "poll_answer"]
+    chat_hint = chat_id or DEFAULT_CHAT_ID
+    deadline = asyncio.get_event_loop().time() + max(1, timeout)
+
+    offset = _load_offset()
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            return (
+                f"Timeout: no matching reply within {timeout}s. / "
+                f"逾時：{timeout} 秒內未收到符合的回覆"
+            )
+
+        slice_s = min(max(1, int(remaining)), 10)
+        raw_updates, err = await _get_updates_once(
+            offset=offset, timeout_s=slice_s, allowed_updates=_ALLOWED_UPDATES
+        )
+        if err:
+            # 409 衝突等不可重試錯誤直接回傳；網路抖動則退避後續試
+            if "409" in err or "Conflict" in err:
+                return err
+            # 退避至少 1 秒（poll_interval<=0 時避免緊密重試），且不睡過 deadline
+            await asyncio.sleep(min(max(1, int(poll_interval)), remaining))
+            continue
+
+        for u in raw_updates:
+            item = _normalize_update(u)
+            if not item:
+                continue
+            offset = max(offset, item["update_id"] + 1)
+            matched = _filter_updates(
+                [item], allowed_chat_ids, allowed_user_ids, wanted_types, chat_hint
+            )
+            if matched:
+                _save_offset(offset)
+                if auto_answer:
+                    # 取回當下立即應答回調，避免 agent 之後手動應答已超窗
+                    await _auto_answer_callbacks(matched)
+                return json.dumps(
+                    {"count": 1, "next_offset": offset, "updates": matched},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+        # 這批沒有符合者，offset 已推進，存檔避免重複讀取
+        _save_offset(offset)
+
+
+async def _post_answer_callback(callback_query_id: str, text: str = "") -> str:
+    """answerCallbackQuery 的底層 POST（供手動工具與自動應答共用）。"""
+    return await _execute_post(
+        "answerCallbackQuery",
+        {
+            "callback_query_id": callback_query_id,
+            "show_alert": False,
+            "cache_time": 0,
+            "text": text,
+        },
+    )
+
+
+async def _auto_answer_callbacks(items: List[Dict[str, Any]]) -> None:
+    """對回傳的 callback_query 事件立即自動應答，消除取回後的計時競態。
+
+    Telegram 的 callback_query 應答僅有數秒到數十秒有效窗口，取回後再
+    手動應答經常已超窗（query is too old）。此函式在回傳前當下應答，
+    並把結果記錄到 payload：成功為 auto_answered=True，失敗為
+    auto_answer_error=<原因>；任何應答失敗都不會阻斷更新本身回傳。
+    """
+    for item in items:
+        if item.get("type") != "callback_query":
+            continue
+        cb_id = (item.get("payload") or {}).get("callback_query_id")
+        if not cb_id:
+            continue
+        try:
+            result = await _post_answer_callback(str(cb_id), AUTO_ANSWER_TEXT)
+        except Exception as exc:  # 防禦性：應答失敗不得影響 updates 回傳
+            item["payload"]["auto_answer_error"] = str(exc)[:200]
+            continue
+        if result.startswith("Success"):
+            item["payload"]["auto_answered"] = True
+        else:
+            item["payload"]["auto_answer_error"] = result[:200]
+
+
+@mcp.tool()
+async def answer_callback_query(
+    callback_query_id: str,
+    text: str = "",
+    show_alert: bool = False,
+    url: Optional[str] = None,
+    cache_time: int = 0,
+) -> str:
+    """Acknowledge a callback button press so the loading spinner on the button stops.
+
+    對使用者點擊的行內按鈕回應，關閉按鈕上的載入動畫；text 可顯示小提示。
+    callback_query_id 來自 get_updates / wait_for_reply 的 callback_query 事件。
+
+    url 傳入時以開啟網址取代 text 提示（須為 http/https 開頭），
+    並與 text 互斥（兩者不可同時傳入）；cache_time 為結果快取秒數
+    （0-604800），預設 0。
+    show_alert=True 時必須帶 text，否則回傳錯誤。
+    注意：callback_query 只有數秒有效，get_updates / wait_for_reply 回傳後
+    應立刻呼叫本工具；輪詢架構下若間隔過長會收到 query is too old，
+    建議搭配 wait_for_reply 的長輪詢，或背景常駐輪詢並立即應答。
+    """
+    if not BOT_TOKEN:
+        return MISSING_BOT_TOKEN
+    if not callback_query_id or not str(callback_query_id).strip():
+        return (
+            "Error: callback_query_id is required. / "
+            "錯誤：callback_query_id 為必填"
+        )
+    if len(text) > 200:
+        return (
+            "Error: text must be at most 200 characters. / "
+            "錯誤：text 長度不可超過 200 字"
+        )
+    if show_alert and not text:
+        return (
+            "Error: text is required when show_alert is True. / "
+            "錯誤：show_alert=True 時 text 為必填"
+        )
+    if text and url:
+        return (
+            "Error: text and url are mutually exclusive. / "
+            "錯誤：text 與 url 不可同時傳入"
+        )
+    if url is not None and not str(url).startswith(("http://", "https://")):
+        return (
+            "Error: url must start with http:// or https:// / "
+            "錯誤：url 須以 http:// 或 https:// 開頭"
+        )
+    if not 0 <= cache_time <= 604800:
+        return (
+            "Error: cache_time must be between 0 and 604800. / "
+            "錯誤：cache_time 須介於 0 與 604800 之間"
+        )
+
+    payload: Dict[str, Any] = {
+        "callback_query_id": callback_query_id,
+        "show_alert": show_alert,
+        "cache_time": cache_time,
+    }
+    if text:
+        payload["text"] = text
+    if url:
+        payload["url"] = url
+    return await _execute_post("answerCallbackQuery", payload)
 
 
 # =====================================================================
