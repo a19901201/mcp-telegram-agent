@@ -29,6 +29,7 @@
 * **本机文件与相册** — 轻松发送日志、报表、源代码、图片、语音、视频，以及 2 至 10 个项目的多媒体相册。
 * **丰富互动组件** — 支持即时投票、测验、地图经纬度坐标、电话名片及官方动画表情符号。
 * **状态与消息生命周期维护** — 支持实时广播机器人输入状态，并能动态更新或删除指定消息。
+* **互动接收** — 以 `get_updates` / `wait_for_reply` 拉取或长轮询用户回复（文字消息、内联按钮点击、投票作答），并用 `answer_callback_query` 回应按钮点击。
 * **uvx 极速启动** — 免去手动创建虚拟环境与安装依赖的繁琐步骤。
 
 ---
@@ -102,6 +103,22 @@
 }
 ```
 
+### 6️⃣ 开启互动接收（可选）
+
+默认服务器只会**发送**。若要让 AI 代理「读回」你的回复（文字消息、内联按钮点击、投票作答），在同一个 `env` 区块加入白名单变量：
+
+```json
+"TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
+"TELEGRAM_ALLOWED_USER_IDS": "123456789"
+```
+
+* `TELEGRAM_ALLOWED_CHAT_IDS` — Chat ID 白名单（逗号分隔）；只有来自这些聊天室的更新会被返回（群组 ID 为负数）。
+* `TELEGRAM_ALLOWED_USER_IDS` — User ID 白名单（逗号分隔）；与 Chat ID 白名单**任一**命中即放行。`poll_answer` 事件没有 `chat_id`，只能靠此名单过滤。
+* `TELEGRAM_STATE_DIR` — 可选；`getUpdates` offset 持久化文件的存放目录，未设置时默认写入系统临时目录下的 `mcp-telegram-agent` 子目录。
+* 未设置白名单时，`get_updates` / `wait_for_reply` 只会返回设置提示。修改 `env` 后请重启 MCP 服务器。
+
+> ⚠️ **时机是关键：** Telegram 的 callback_query 只有数秒有效。`wait_for_reply` / `get_updates` 返回按钮点击后应立刻调用 `answer_callback_query`；间隔过长会收到 `query is too old`（平台限制，并非程序错误）。
+
 ---
 
 ## 🧰 工具列表
@@ -121,6 +138,9 @@
 | `send_chat_action` | 向客户端显示当前操作状态，如输入中与上传文件中。 |
 | `edit_message_text` | 动态更新既有消息内容与按钮。 |
 | `delete_message` | 清理特定暂存或历史消息。 |
+| `get_updates` | 一次性拉取待处理更新（消息、按钮点击、投票作答），不等待新消息。 |
+| `wait_for_reply` | 长轮询等待用户下一条回复，超时自动返回。 |
+| `answer_callback_query` | 回应内联按钮点击以关闭加载动画，可附提示文字或打开网址。 |
 
 ---
 
@@ -206,6 +226,36 @@
   "arguments": { "message_id": 120 }
 }
 ```
+
+### 📨 等待回复并确认按钮点击
+
+> 「传给我一个是/否问题的内联按钮，等我点击后回报我选了什么」
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "现在部署到正式环境？",
+    "inline_buttons": [[{"text": "好", "callback_data": "deploy:yes"}, {"text": "不要", "callback_data": "deploy:no"}]]
+  }
+}
+```
+
+```json
+{
+  "tool": "wait_for_reply",
+  "arguments": { "types": ["callback_query"], "timeout": 25 }
+}
+```
+
+```json
+{
+  "tool": "answer_callback_query",
+  "arguments": { "callback_query_id": "<点击事件中的 callback_query.id>", "text": "🚀 部署中…" }
+}
+```
+
+> 💡 需先完成第 6️⃣ 步白名单设置。`get_updates` 适合一次性非阻塞查看（可加 `mark_read: false` 先查看不消耗更新）；`wait_for_reply` 则是长轮询直到收到回复。收到按钮点击后要立刻 `answer_callback_query`，否则 Telegram 会回 `query is too old`。
 
 > 💡 未提供 `chat_id` 时，消息送到 `TELEGRAM_DEFAULT_CHAT_ID`；明确传入 `chat_id` 即可发送给任何用户、群组或频道——见上方第 4️⃣ 步。
 

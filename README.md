@@ -32,6 +32,7 @@ A Model Context Protocol (MCP) server empowering AI agents with Telegram Bot cap
 * **Rich Media & Local Files** — Deliver logs, reports, source code, images, audio, voice notes, videos, and multi-image albums (2–10 files).
 * **Interactive Tooling** — Launch quizzes, single/multiple-choice polls, GPS coordinates, digital contact cards, and animated dice.
 * **Message Lifecycle** — Broadcast bot statuses (typing, uploading) and edit or delete messages on the fly.
+* **Interactive Receive** — Pull or long-poll user replies (text messages, inline button clicks, poll answers) with `get_updates` / `wait_for_reply`, and acknowledge button presses with `answer_callback_query`.
 * **Instant uvx Execution** — Run directly with no virtual environments or manual package installs.
 
 ---
@@ -105,6 +106,22 @@ A universal configuration that works with **every** MCP client — just fill in 
 }
 ```
 
+### 6️⃣ Enable Interactive Receive (Optional)
+
+By default the server only **sends**. To let your agent *read back* your replies (text messages, inline button clicks, poll answers), add the allowlist variables to the same `env` block:
+
+```json
+"TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
+"TELEGRAM_ALLOWED_USER_IDS": "123456789"
+```
+
+* `TELEGRAM_ALLOWED_CHAT_IDS` — comma-separated chat allowlist; only updates from these chats are returned (group IDs are negative).
+* `TELEGRAM_ALLOWED_USER_IDS` — comma-separated user allowlist; an update passes if it hits **either** list. `poll_answer` events carry no `chat_id`, so they can only be filtered by this user list.
+* `TELEGRAM_STATE_DIR` — optional directory for the persisted `getUpdates` offset file; defaults to a `mcp-telegram-agent` subfolder under the system temp directory.
+* Without an allowlist, `get_updates` / `wait_for_reply` return a setup hint instead of updates. Restart the MCP server after editing `env`.
+
+> ⚠️ **Timing matters:** Telegram keeps a callback query valid for only a few seconds. Call `answer_callback_query` immediately after `wait_for_reply` / `get_updates` returns a button click — long gaps are rejected with `query is too old` (a platform limit, not a bug).
+
 ---
 
 ## 🧰 Available Tools
@@ -124,6 +141,9 @@ A universal configuration that works with **every** MCP client — just fill in 
 | `send_chat_action` | Display temporary bot statuses (typing, uploading). |
 | `edit_message_text` | Dynamically update previously sent text and keyboards. |
 | `delete_message` | Clean up or remove specific messages. |
+| `get_updates` | Fetch pending updates once (messages, button clicks, poll answers) without waiting. |
+| `wait_for_reply` | Long-poll until the next user reply arrives, with a timeout. |
+| `answer_callback_query` | Acknowledge a button press to stop its loading spinner; optional alert text or URL. |
 
 ---
 
@@ -209,6 +229,36 @@ Once configured, simply talk to your AI agent in natural language — it picks t
   "arguments": { "message_id": 120 }
 }
 ```
+
+### 📨 Wait for a reply and confirm a button click
+
+> "Ask me a yes/no question with inline buttons, wait for my answer, and tell me what I clicked"
+
+```json
+{
+  "tool": "send_text_message",
+  "arguments": {
+    "text": "Deploy to production now?",
+    "inline_buttons": [[{"text": "Yes", "callback_data": "deploy:yes"}, {"text": "No", "callback_data": "deploy:no"}]]
+  }
+}
+```
+
+```json
+{
+  "tool": "wait_for_reply",
+  "arguments": { "types": ["callback_query"], "timeout": 25 }
+}
+```
+
+```json
+{
+  "tool": "answer_callback_query",
+  "arguments": { "callback_query_id": "<callback_query.id from the click>", "text": "🚀 Deploying…" }
+}
+```
+
+> 💡 Requires the step 6️⃣ allowlist. Use `get_updates` for a one-shot, non-blocking check (add `mark_read: false` to peek without consuming updates) and `wait_for_reply` to long-poll until something arrives. Answer callback queries immediately, or Telegram rejects them with `query is too old`.
 
 > 💡 When `chat_id` is omitted, messages go to `TELEGRAM_DEFAULT_CHAT_ID`; pass it explicitly to reach any user, group, or channel — see step 4️⃣ above.
 
