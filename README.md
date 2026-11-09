@@ -74,9 +74,9 @@ A Model Context Protocol (MCP) server empowering AI agents with Telegram Bot cap
 
 Add the configuration below to your MCP settings file (e.g., `cline_mcp_settings.json` or `claude_desktop_config.json`).
 
-#### ✅ Example A — Universal Default (Recommended)
+#### ✅ Recommended Configuration (All Features Enabled)
 
-A universal configuration that works with **every** MCP client — just fill in your bot token and chat ID:
+This single block enables both **sending** and **interactive receive** — just fill in your token, chat ID and allowlists:
 
 ```json
 {
@@ -86,39 +86,30 @@ A universal configuration that works with **every** MCP client — just fill in 
       "args": ["mcp-telegram-agent"],
       "env": {
         "TELEGRAM_BOT_TOKEN": "YOUR_TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_DEFAULT_CHAT_ID": "YOUR_CHAT_ID"
+        "TELEGRAM_DEFAULT_CHAT_ID": "YOUR_CHAT_ID",
+        "TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
+        "TELEGRAM_ALLOWED_USER_IDS": "123456789"
       }
     }
   }
 }
 ```
 
-> 💡 **Both `env` variables are optional.** If they are missing, the server still starts normally — it returns a clear, human-readable error only when a tool call actually needs the token or the fallback chat ID. This also allows a credential-free trial run with no `env` block at all:
+> 💡 **All four environment variables are optional.** If one is missing, the server still starts normally — it returns a clear, human-readable error only when a tool call actually needs it. What each variable does:
 
-```json
-{
-  "mcpServers": {
-    "Telegram": {
-      "command": "uvx",
-      "args": ["mcp-telegram-agent"]
-    }
-  }
-}
-```
+* `TELEGRAM_BOT_TOKEN` — your Bot Token; required by all sending tools.
+* `TELEGRAM_DEFAULT_CHAT_ID` — the default recipient used when a tool call omits `chat_id`.
+* `TELEGRAM_ALLOWED_CHAT_IDS` / `TELEGRAM_ALLOWED_USER_IDS` — interactive-receive allowlists so your agent can *read back* your replies (text messages, inline button clicks, poll answers); see step 6️⃣ for details. Omitting them disables receive: `get_updates` / `wait_for_reply` return a setup hint instead.
+* `TELEGRAM_STATE_DIR` (advanced, not shown above) — directory for the persisted `getUpdates` offset file; defaults to a `mcp-telegram-agent` subfolder under the system temp directory.
 
-### 6️⃣ Enable Interactive Receive (Optional)
+> 💡 For a credential-free trial run, omit the whole `env` block and fill in the pieces as the tool error messages instruct.
 
-By default the server only **sends**. To let your agent *read back* your replies (text messages, inline button clicks, poll answers), add the allowlist variables to the same `env` block:
+### 6️⃣ Interactive Receive (Allowlist) Behavior
 
-```json
-"TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
-"TELEGRAM_ALLOWED_USER_IDS": "123456789"
-```
+The recommended configuration already fills in both allowlists, so `get_updates` / `wait_for_reply` can fetch or long-poll your replies. Behavior details:
 
 * `TELEGRAM_ALLOWED_CHAT_IDS` — comma-separated chat allowlist; when set, updates from other chats are filtered out (group IDs are negative). `poll_answer` events carry no `chat_id`, so they cannot be matched against this list.
 * `TELEGRAM_ALLOWED_USER_IDS` — comma-separated user allowlist; when set, updates are also filtered by user ID. An update passes if it hits **any** configured list (each unset list is simply ignored).
-* `TELEGRAM_STATE_DIR` — optional directory for the persisted `getUpdates` offset file; defaults to a `mcp-telegram-agent` subfolder under the system temp directory.
-* First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
 * First-call note: the very first `get_updates` (no state file yet) fetches **all** pending updates from Telegram, and they are consumed when `mark_read` is `true` (the default). Use `mark_read: false` to preview without consuming them.
 * `limit` only caps how many matching updates are returned per call: the offset advances only past the last returned update, so the remaining matches stay queued for the next call. Updates that don't match the allowlist or `types` are still consumed — the offset is a single stream, so a single type or chat cannot be held back.
 * Without an allowlist, `get_updates` / `wait_for_reply` return a setup hint instead of updates. Restart the MCP server after editing `env`.
@@ -261,7 +252,7 @@ Once configured, simply talk to your AI agent in natural language — it picks t
 }
 ```
 
-> 💡 Requires the step 6️⃣ allowlist. Use `get_updates` for a one-shot, non-blocking check (add `mark_read: false` to peek without consuming updates) and `wait_for_reply` to long-poll until something arrives. Callback clicks are auto-answered the moment they are fetched; pass `auto_answer: false` only when you need a custom prompt, alert, or URL via `answer_callback_query`.
+> 💡 Requires the step 5️⃣ allowlist. Use `get_updates` for a one-shot, non-blocking check (add `mark_read: false` to peek without consuming updates) and `wait_for_reply` to long-poll until something arrives. Callback clicks are auto-answered the moment they are fetched; pass `auto_answer: false` only when you need a custom prompt, alert, or URL via `answer_callback_query`.
 
 > 💡 When `chat_id` is omitted, messages go to `TELEGRAM_DEFAULT_CHAT_ID`; pass it explicitly to reach any user, group, or channel — see step 4️⃣ above.
 
