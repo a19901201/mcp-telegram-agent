@@ -71,9 +71,9 @@
 
 在 MCP 設定檔（例如 VS Code 的 `cline_mcp_settings.json` 或 `claude_desktop_config.json`）中加入以下內容。
 
-#### ✅ 範例 A — 通用預設配置（建議）
+#### ✅ 推薦配置（啟用全部功能）
 
-適用於**所有** MCP 用戶端的通用配置——只需填入你的權杖與 chat_id：
+一個區塊同時啟用**發送**與**互動接收**——填入你的權杖、chat_id 與白名單即可：
 
 ```json
 {
@@ -83,38 +83,30 @@
       "args": ["mcp-telegram-agent"],
       "env": {
         "TELEGRAM_BOT_TOKEN": "你的_BOT_TOKEN",
-        "TELEGRAM_DEFAULT_CHAT_ID": "你的_CHAT_ID"
+        "TELEGRAM_DEFAULT_CHAT_ID": "你的_CHAT_ID",
+        "TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
+        "TELEGRAM_ALLOWED_USER_IDS": "123456789"
       }
     }
   }
 }
 ```
 
-> 💡 **兩個環境變數皆為選填。** 缺少任一變數時伺服器仍會正常啟動，只在實際呼叫需要權杖或預設 chat_id 的工具時，回傳清楚的錯誤說明。也可以整段省略 `env` 區塊，進行不帶憑證的試運行：
+> 💡 **四個環境變數皆為選填。** 缺少任一變數時伺服器仍會正常啟動，只在實際呼叫相關工具時，回傳清楚的錯誤說明。各變數作用：
 
-```json
-{
-  "mcpServers": {
-    "Telegram": {
-      "command": "uvx",
-      "args": ["mcp-telegram-agent"]
-    }
-  }
-}
-```
+* `TELEGRAM_BOT_TOKEN` — 你的 Bot Token，所有發送類工具的必要憑證。
+* `TELEGRAM_DEFAULT_CHAT_ID` — 預設收件人；工具呼叫未提供 `chat_id` 時的目標。
+* `TELEGRAM_ALLOWED_CHAT_IDS`／`TELEGRAM_ALLOWED_USER_IDS` — 互動接收白名單，讓 AI 代理能「讀回」你的回覆（文字訊息、行內按鈕點擊、投票作答），行為細節見第 6️⃣ 步。省略時互動接收關閉，`get_updates` / `wait_for_reply` 會回傳設定提示。
+* `TELEGRAM_STATE_DIR`（未列入範例的進階選項）— `getUpdates` offset 持久化檔案的存放目錄，未設定時預設寫入系統暫存目錄下的 `mcp-telegram-agent` 子目錄。
 
-### 6️⃣ 開啟互動接收（選用）
+> 💡 想先進行不帶憑證的試運行，可整段省略 `env` 區塊，之後依工具回傳的錯誤提示逐項補齊即可。
 
-預設伺服器只會**發送**。若要讓 AI 代理「讀回」你的回覆（文字訊息、行內按鈕點擊、投票作答），在同一個 `env` 區塊加入白名單變數：
+### 6️⃣ 互動接收（白名單）行為
 
-```json
-"TELEGRAM_ALLOWED_CHAT_IDS": "123456789,-1001234567890",
-"TELEGRAM_ALLOWED_USER_IDS": "123456789"
-```
+推薦配置已同時填入兩份白名單，`get_updates` / `wait_for_reply` 因此可拉取或長輪詢你的回覆。行為細節：
 
 * `TELEGRAM_ALLOWED_CHAT_IDS` — Chat ID 白名單（逗號分隔）；已設定時，來自其他聊天室的更新一律過濾（群組 ID 為負數）。`poll_answer` 事件沒有 `chat_id`，無法與此名單比對。
 * `TELEGRAM_ALLOWED_USER_IDS` — User ID 白名單（逗號分隔）；已設定時，更新也會以 User ID 過濾。更新只要命中**任一**已設定的名單即放行（未設定的名單不參與判定）。
-* `TELEGRAM_STATE_DIR` — 選填；`getUpdates` offset 持久化檔案的存放目錄，未設定時預設寫入系統暫存目錄下的 `mcp-telegram-agent` 子目錄。
 * 首次呼叫注意：第一次呼叫 `get_updates`（尚無狀態檔）時，Telegram 會回傳全部未確認的 pending updates，且 `mark_read` 預設 true 會將其讀取推進；若不想消耗歷史積壓，第一次呼叫請先用 `mark_read: false` 預覽。
 * limit 只限制單次回傳筆數：offset 僅推進到實際回傳的最後一筆，被截斷的其餘符合項目會留待下次呼叫。未符合白名單或 types 條件的更新仍會被讀取推進（offset 為單一串流，無法單獨保留某個型別或某間聊天室的更新）。
 * 未設定白名單時，`get_updates` / `wait_for_reply` 只會回傳設定提示。修改 `env` 後請重啟 MCP 伺服器。
@@ -257,7 +249,7 @@
 }
 ```
 
-> 💡 需先完成第 6️⃣ 步白名單設定。`get_updates` 適合一次性非阻塞查看（可加 `mark_read: false` 先偷看不消耗更新）；`wait_for_reply` 則是長輪詢等到回覆為止。按鈕點擊會在取回當下自動應答；僅當需要自訂提示、彈窗或網址時才傳 `auto_answer: false` 並改用 `answer_callback_query`。
+> 💡 需先於第 5️⃣ 步設定白名單。`get_updates` 適合一次性非阻塞查看（可加 `mark_read: false` 先偷看不消耗更新）；`wait_for_reply` 則是長輪詢等到回覆為止。按鈕點擊會在取回當下自動應答；僅當需要自訂提示、彈窗或網址時才傳 `auto_answer: false` 並改用 `answer_callback_query`。
 
 > 💡 未提供 `chat_id` 時，訊息送到 `TELEGRAM_DEFAULT_CHAT_ID`；明確傳入 `chat_id` 即可發送給任何使用者、群組或頻道——見上方第 4️⃣ 步。
 
