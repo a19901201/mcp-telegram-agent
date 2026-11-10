@@ -1,0 +1,46 @@
+name: Guard no test files
+
+# 測試檔一律只留本機，不入公開版控。本守門在 PR 進 main / release 時執行：
+#   1. 掃描整棵 repo 樹：存在 tests/、test/、dev_test/ 等測試目錄或
+#      test_*.py、*_test.py、conftest.py 等測試檔即失敗
+#   2. 掃描本 PR 變更檔案清單：新增或修改測試用檔案即失敗
+# 兩層任一命中都會令 check 失敗，擋下合併。
+
+on:
+  pull_request:
+    branches: [main, release]
+
+permissions:
+  contents: read
+
+jobs:
+  no-test-files:
+    name: no-test-files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan repo tree for test files
+        run: |
+          PATTERN='(^|/)(tests?|dev_test)/|(^|/)test_[^/]+\.py$|(^|/)[^/]+_test\.py$|(^|/)conftest\.py$'
+          HITS=$(git ls-files | grep -E "$PATTERN" || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::版控內發現測試用檔案，不得公開，請自版控移除後重送："
+            echo "$HITS"
+            exit 1
+          fi
+          echo "repo 樹內無測試檔，第一層通過"
+
+      - name: Scan PR diff for test files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PATTERN='(^|/)(tests?|dev_test)/|(^|/)test_[^/]+\.py$|(^|/)[^/]+_test\.py$|(^|/)conftest\.py$'
+          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[] | select(.status != "removed") | .filename')
+          HITS=$(echo "$FILES" | grep -E "$PATTERN" || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::本 PR 變更包含測試用檔案，不得合併："
+            echo "$HITS"
+            exit 1
+          fi
+          echo "PR 變更無測試檔，第二層通過"
