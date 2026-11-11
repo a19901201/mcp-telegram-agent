@@ -11,7 +11,7 @@ A Model Context Protocol (MCP) server empowering AI agents with Telegram Bot cap
 
 [![PyPI Version](https://img.shields.io/pypi/v/mcp-telegram-agent?color=blue&logo=pypi)](https://pypi.org/project/mcp-telegram-agent/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mcp-telegram-agent?logo=python)](https://pypi.org/project/mcp-telegram-agent/)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/mcp-telegram-agent?color=green)](https://pypi.org/project/mcp-telegram-agent/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/mcp-telegram-agent?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/mcp-telegram-agent)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **English** · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md)
