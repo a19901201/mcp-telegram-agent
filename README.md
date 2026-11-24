@@ -271,3 +271,9 @@ Once configured, simply talk to your AI agent in natural language — it picks t
 
 This project is licensed under the MIT License.
 
+
+---
+
+## MCP Registry
+
+[![mcp-telegram-agent MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/a19901201/mcp-telegram-agent/badges/score.svg)](https://glama.ai/mcp/servers/a19901201/mcp-telegram-agent)
