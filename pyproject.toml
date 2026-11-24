@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [
     { name = "PCKuo" }
 ]
-keywords = ["mcp", "model-context-protocol", "fastmcp", "telegram", "telegram-bot", "ai-agent", "automation"]
+keywords = ["mcp", "model-context-protocol", "fastmcp", "telegram", "telegram-bot", "ai-agent", "automation", "cline", "claude-desktop", "chatbot", "bot-api", "notification", "messaging", "rich-media", "uvx"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -17,6 +17,11 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
     "mcp[cli]>=1.0.0",

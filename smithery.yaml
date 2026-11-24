@@ -1,0 +1,26 @@
+# Smithery configuration file: https://smithery.ai
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      telegramBotToken:
+        type: string
+        title: Telegram Bot Token
+        description: Bot token from @BotFather, required for the server to connect to the Telegram Bot API.
+      telegramDefaultChatId:
+        type: string
+        title: Default Chat ID
+        description: Optional default chat ID used when a tool call omits chat_id.
+      telegramAllowedChatIds:
+        type: string
+        title: Allowed Chat IDs
+        description: Optional comma-separated allowlist of chat IDs permitted to interact with the bot.
+  commandFunction: |-
+    (config) => {
+      const env = {};
+      if (config && config.telegramBotToken) env.TELEGRAM_BOT_TOKEN = config.telegramBotToken;
+      if (config && config.telegramDefaultChatId) env.TELEGRAM_DEFAULT_CHAT_ID = config.telegramDefaultChatId;
+      if (config && config.telegramAllowedChatIds) env.TELEGRAM_ALLOWED_CHAT_IDS = config.telegramAllowedChatIds;
+      return { command: 'uvx', args: ['mcp-telegram-agent'], env };
+    }

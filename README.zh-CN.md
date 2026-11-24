@@ -267,3 +267,9 @@
 ## 📄 授权条款
 
 本项目采用 MIT 授权协议开源发布。
+
+---
+
+## MCP Registry
+
+[![mcp-telegram-agent MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/a19901201/mcp-telegram-agent/badges/score.svg)](https://glama.ai/mcp/servers/a19901201/mcp-telegram-agent)
